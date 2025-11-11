@@ -9,7 +9,7 @@ import {
   emitAccountLinkEvent,
 } from '@/lib/accountLink/accountLink.server';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
-import { setAccountLinkStatus, getSessionRecord } from '@/lib/session/session.server';
+import { setAccountLinkStatus, getSessionRecord, resolveSessionIdByEmail } from '@/lib/session/session.server';
 import { activateSubscription, cancelSubscription, markSubscriptionPending } from '@/lib/subscription/subscription.server';
 
 import {
@@ -17,8 +17,9 @@ import {
   type OncadeSubscriptionTransition,
 } from './oncadeWebhook.constants';
 import {
-  extractSessionId,
   extractSessionKey,
+  extractSubscriptionSessionKey,
+  extractUserEmail,
   extractUserRef,
 } from './oncadeWebhook.helpers';
 import type { OncadeWebhookEnvelope } from './oncadeWebhook.types';
@@ -84,12 +85,26 @@ export async function handleSubscriptionWebhook(
   payload: OncadeWebhookEnvelope,
   transition: OncadeSubscriptionTransition,
 ): Promise<NextResponse> {
-  const sessionId = extractSessionId(payload.data);
+  const subscriptionSessionKey = extractSubscriptionSessionKey(payload.data);
+  const payloadEmail = extractUserEmail(payload.data);
 
-  if (!sessionId) {
+  if (!subscriptionSessionKey && !payloadEmail) {
     return NextResponse.json(
       { success: false, error: 'Session identifier missing.' },
       { status: HTTP_STATUS_BAD_REQUEST },
+    );
+  }
+
+  let sessionId = subscriptionSessionKey ? resolveSessionIdFromLink(subscriptionSessionKey) : undefined;
+
+  if (!sessionId && payloadEmail) {
+    sessionId = resolveSessionIdByEmail(payloadEmail);
+  }
+
+  if (!sessionId) {
+    return NextResponse.json(
+      { success: false, error: 'Session for webhook not found.' },
+      { status: HTTP_STATUS_ACCEPTED },
     );
   }
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getOncadeIntegrationConfig } from '@/lib/env/config.server';
 import { resolveDemoPlanConfig } from '@/lib/env/planConfig.server';
-import { requireSessionFromRequest, resolveSessionErrorStatus } from '@/lib/session/session.server';
+import { resolveSessionErrorStatus } from '@/lib/session/session.server';
 import { HEADER_API_VERSION, HEADER_AUTHORIZATION, HEADER_GAME_ID, ONCADE_API_VERSION_HEADER_VALUE } from '@/lib/constants';
 import { CheckoutRedirectError } from '@/lib/errors/checkoutRedirectError';
 import { requestCheckoutRedirect, sanitizeRedirectUrl } from '@/lib/subscription/checkoutRedirect.server';
@@ -13,10 +13,8 @@ const HTTP_STATUS_INTERNAL_ERROR = 500;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const session = requireSessionFromRequest(request);
     const body = await parseSubscribeRequestBody(request);
     const safeRedirectUrl = sanitizeRedirectUrl(body.redirectUrl);
-    const externalSessionId = session.id;
 
     const { apiBaseUrl, serverApiKey, gameId } = getOncadeIntegrationConfig();
     const plan = await resolveDemoPlanConfig({ forceRefresh: true });
@@ -35,7 +33,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       gameId,
       plan.itemId,
       safeRedirectUrl,
-      externalSessionId,
     );
 
     return NextResponse.json({

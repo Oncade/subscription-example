@@ -110,6 +110,10 @@ describe('Oncade webhook route', () => {
   it('transitions subscription to active when completed webhook arrives', async () => {
     const secret = process.env.DEMO_WEBHOOK_SECRET ?? 'test-secret';
     const session = createDemoSession('listen-subscription@test.com');
+    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Started, {
+      sessionKey: 'session_subscription',
+      preserveMapping: true,
+    });
     await markSubscriptionPending(session.id, 'demo');
 
     const request = makeSignedRequest(
@@ -117,7 +121,29 @@ describe('Oncade webhook route', () => {
       {
         event: 'Purchases.Subscriptions.Completed',
         timestamp: new Date().toISOString(),
-        data: { sessionId: session.id },
+        data: { metadata: { sessionKey: 'session_subscription' } },
+      },
+      secret,
+    );
+
+    const response = await oncadeWebhook(request);
+    expect(response.status).toBe(200);
+
+    const updated = getSessionDto(session.id);
+    expect(updated?.subscriptionStatus).toBe(SUBSCRIPTION_STATUS.Active);
+  });
+
+  it('falls back to email when subscription webhook is missing session key', async () => {
+    const secret = process.env.DEMO_WEBHOOK_SECRET ?? 'test-secret';
+    const session = createDemoSession('email-only@test.com');
+    await markSubscriptionPending(session.id, 'demo');
+
+    const request = makeSignedRequest(
+      '/api/webhook',
+      {
+        event: 'Purchases.Subscriptions.Completed',
+        timestamp: new Date().toISOString(),
+        data: { userEmail: 'email-only@test.com' },
       },
       secret,
     );

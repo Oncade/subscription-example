@@ -16,6 +16,7 @@ export const SESSION_ERROR_UNKNOWN_IDENTIFIER = 'Unknown session identifier' as 
 interface SessionStoreInternal {
   readonly records: Map<DemoSessionId, DemoSessionRecord>;
   readonly linkToSession: Map<string, DemoSessionId>;
+  readonly emailToSession: Map<string, DemoSessionId>;
 }
 
 function normalizeUserRef(value: unknown): string | undefined {
@@ -23,6 +24,14 @@ function normalizeUserRef(value: unknown): string | undefined {
     return undefined;
   }
   const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function normalizeEmail(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim().toLowerCase();
   return trimmed ? trimmed : undefined;
 }
 
@@ -36,6 +45,7 @@ function createStore(): SessionStoreInternal {
   return {
     records: new Map(),
     linkToSession: new Map(),
+    emailToSession: new Map(),
   };
 }
 
@@ -61,9 +71,21 @@ function toDto(record: DemoSessionRecord): DemoSessionDto {
 }
 
 function persist(record: DemoSessionRecord): DemoSessionRecord {
+  const previous = store.records.get(record.id);
+  if (previous) {
+    const previousEmail = normalizeEmail(previous.email);
+    const nextEmail = normalizeEmail(record.email);
+    if (previousEmail && previousEmail !== nextEmail) {
+      store.emailToSession.delete(previousEmail);
+    }
+  }
   store.records.set(record.id, record);
   if (record.linkSessionKey) {
     store.linkToSession.set(record.linkSessionKey, record.id);
+  }
+  const normalizedEmail = normalizeEmail(record.email);
+  if (normalizedEmail) {
+    store.emailToSession.set(normalizedEmail, record.id);
   }
   return record;
 }
@@ -169,6 +191,14 @@ export function setSubscriptionStatus(
 
 export function mapLinkSessionToSessionId(linkSessionKey: string): DemoSessionId | undefined {
   return store.linkToSession.get(linkSessionKey);
+}
+
+export function resolveSessionIdByEmail(email: string): DemoSessionId | undefined {
+  const normalized = normalizeEmail(email);
+  if (!normalized) {
+    return undefined;
+  }
+  return store.emailToSession.get(normalized);
 }
 
 export function touchWebhook(sessionId: DemoSessionId): void {

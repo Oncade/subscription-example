@@ -31,4 +31,3 @@ export const ONCADE_API_VERSION_HEADER_VALUE = 'v1' as const;
 export const COINFLOW_REDIRECT_QUERY_GAME_ID = 'gameId' as const;
 export const COINFLOW_REDIRECT_QUERY_ITEM_ID = 'itemId' as const;
 export const COINFLOW_REDIRECT_QUERY_REDIRECT_URL = 'redirectUrl' as const;
-export const COINFLOW_REDIRECT_QUERY_EXTERNAL_SESSION_ID = 'externalSessionId' as const;

@@ -138,6 +138,7 @@ export function completeAccountLink(
 ): void {
   setAccountLinkStatus(sessionId, ACCOUNT_LINK_STATUS.Linked, {
     userRef,
+    preserveMapping: true,
   });
   touchWebhook(sessionId);
   emitAccountLinkEvent({
@@ -161,6 +162,7 @@ export function cancelAccountLink(
 ): void {
   setAccountLinkStatus(sessionId, ACCOUNT_LINK_STATUS.Canceled, {
     userRef: userRef ?? null,
+    preserveMapping: true,
   });
   touchWebhook(sessionId);
   emitAccountLinkEvent({

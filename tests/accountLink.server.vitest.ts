@@ -110,7 +110,7 @@ describe('accountLink.server', () => {
 
     const updated = getSessionDto(session.id);
     expect(updated?.accountLinkStatus).toBe(ACCOUNT_LINK_STATUS.Linked);
-    expect(updated?.linkSessionKey).toBeUndefined();
+    expect(updated?.linkSessionKey).toBe(linkSession.sessionKey);
     expect(updated?.linkedUserRef).toBe('user_ref_123');
   });
 
@@ -133,5 +133,6 @@ describe('accountLink.server', () => {
     const updated = getSessionDto(session.id);
     expect(updated?.accountLinkStatus).toBe(ACCOUNT_LINK_STATUS.Canceled);
     expect(updated?.linkedUserRef).toBeUndefined();
+    expect(updated?.linkSessionKey).toBe(linkSession.sessionKey);
   });
 });

@@ -5,7 +5,6 @@ import {
   COINFLOW_REDIRECT_QUERY_GAME_ID,
   COINFLOW_REDIRECT_QUERY_ITEM_ID,
   COINFLOW_REDIRECT_QUERY_REDIRECT_URL,
-  COINFLOW_REDIRECT_QUERY_EXTERNAL_SESSION_ID,
 } from '@/lib/constants';
 
 const CHECKOUT_REDIRECT_PATH = '/api/v1/checkout/redirect' as const;
@@ -39,7 +38,6 @@ export function buildCheckoutUrl(
   gameId: string,
   itemId: string,
   redirectUrl: string | undefined,
-  externalSessionId: string | undefined,
 ): string {
   const resolvedBase = baseUrl.trim();
   const target = new URL(CHECKOUT_REDIRECT_PATH, resolvedBase);
@@ -47,9 +45,6 @@ export function buildCheckoutUrl(
   target.searchParams.set(COINFLOW_REDIRECT_QUERY_ITEM_ID, itemId);
   if (redirectUrl) {
     target.searchParams.set(COINFLOW_REDIRECT_QUERY_REDIRECT_URL, redirectUrl);
-  }
-  if (externalSessionId) {
-    target.searchParams.set(COINFLOW_REDIRECT_QUERY_EXTERNAL_SESSION_ID, externalSessionId);
   }
   return target.toString();
 }
@@ -72,9 +67,8 @@ export async function requestCheckoutRedirect(
   gameId: string,
   itemId: string,
   redirectUrl?: string,
-  externalSessionId?: string,
 ): Promise<string> {
-  const requestUrl = buildCheckoutUrl(baseUrl, gameId, itemId, redirectUrl, externalSessionId);
+  const requestUrl = buildCheckoutUrl(baseUrl, gameId, itemId, redirectUrl);
 
   let response: Response;
   try {

@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { POST as subscribe } from '@/app/api/subscription/subscribe/route';
 import { DEFAULT_ONCADE_API_BASE_URL, SESSION_HEADER } from '@/lib/constants';
-import { createDemoSession, getSessionDto } from '@/lib/session/session.server';
+import { createDemoSession, getSessionDto, setAccountLinkStatus } from '@/lib/session/session.server';
 import { SUBSCRIPTION_STATUS } from '@/lib/subscription/subscription.types';
+import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
 import { buildAppUrl, buildJsonRequest, jsonResponse } from './helpers/http';
 
 const TEST_REDIRECT_URL = buildAppUrl('/success');
@@ -15,12 +16,11 @@ function resolveApiBaseUrl(): string {
   return raw.replace(/\/$/, '');
 }
 
-function buildRemoteCheckoutUrl(sessionId: string, redirectUrl: string = TEST_REDIRECT_URL): string {
+function buildRemoteCheckoutUrl(redirectUrl: string = TEST_REDIRECT_URL): string {
   const target = new URL(`${resolveApiBaseUrl()}/api/v1/checkout/redirect`);
   target.searchParams.set('gameId', 'test-game-id');
   target.searchParams.set('itemId', 'demo-plan-item-id');
   target.searchParams.set('redirectUrl', redirectUrl);
-  target.searchParams.set('externalSessionId', sessionId);
   return target.toString();
 }
 
@@ -51,6 +51,7 @@ function buildPlanResponse() {
 describe('POST /api/subscription/subscribe', () => {
   it('returns redirect url from checkout endpoint', async () => {
     const session = createDemoSession('checkout@test.com');
+    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Linked);
 
     const planResponse = buildPlanResponse();
     const checkoutResponse = new Response(null, {
@@ -76,7 +77,7 @@ describe('POST /api/subscription/subscribe', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
 
     const [, options] = fetchSpy.mock.calls[1];
-    expect(fetchSpy.mock.calls[1]?.[0]).toBe(buildRemoteCheckoutUrl(session.id));
+    expect(fetchSpy.mock.calls[1]?.[0]).toBe(buildRemoteCheckoutUrl());
     expect(options?.headers).toMatchObject({
       authorization: 'Bearer test-api-key',
       'x-game-id': 'test-game-id',
@@ -86,6 +87,7 @@ describe('POST /api/subscription/subscribe', () => {
 
   it('propagates error responses from checkout endpoint', async () => {
     const session = createDemoSession('failure@test.com');
+    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Linked);
 
     const planResponse = buildPlanResponse();
     const errorResponse = jsonResponse({ error: 'Item not found' }, 404);
@@ -107,6 +109,7 @@ describe('POST /api/subscription/subscribe', () => {
 
   it('handles network failures when requesting checkout redirect', async () => {
     const session = createDemoSession('network@test.com');
+    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Linked);
 
     const planResponse = buildPlanResponse();
 
@@ -125,6 +128,7 @@ describe('POST /api/subscription/subscribe', () => {
 
   it('returns configuration error when checkout item id is missing', async () => {
     const session = createDemoSession('config@test.com');
+    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Linked);
     const originalItemId = process.env.DEMO_PLAN_ITEM_ID;
     delete process.env.DEMO_PLAN_ITEM_ID;
 
