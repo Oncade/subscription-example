@@ -49,8 +49,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: false, error: 'Invalid JSON webhook payload.' }, { status: HTTP_STATUS_BAD_REQUEST });
   }
 
-  console.log('POST', payload)
-
   if (!payload.event || typeof payload.event !== 'string') {
     return NextResponse.json({ success: false, error: 'Missing event identifier.' }, { status: HTTP_STATUS_BAD_REQUEST });
   }
