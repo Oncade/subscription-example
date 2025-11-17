@@ -1,5 +1,7 @@
 import type { AccountLinkWebhookData, SubscriptionWebhookData } from './oncadeWebhook.types';
 
+type UserRefPayload = AccountLinkWebhookData | SubscriptionWebhookData;
+
 export function extractSessionKey(data: unknown): string | undefined {
   if (!data || typeof data !== 'object') {
     return undefined;
@@ -30,7 +32,7 @@ export function extractUserRef(data: unknown): string | undefined {
   if (!data || typeof data !== 'object') {
     return undefined;
   }
-  const { user_ref: snakeUserRef, userRef } = data as AccountLinkWebhookData;
+  const { user_ref: snakeUserRef, userRef } = data as UserRefPayload;
   const candidate = typeof snakeUserRef === 'string' ? snakeUserRef : typeof userRef === 'string' ? userRef : undefined;
   if (!candidate) {
     return undefined;

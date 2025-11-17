@@ -17,6 +17,7 @@ interface SessionStoreInternal {
   readonly records: Map<DemoSessionId, DemoSessionRecord>;
   readonly linkToSession: Map<string, DemoSessionId>;
   readonly emailToSession: Map<string, DemoSessionId>;
+  readonly userRefToSession: Map<string, DemoSessionId>;
 }
 
 function normalizeUserRef(value: unknown): string | undefined {
@@ -46,6 +47,7 @@ function createStore(): SessionStoreInternal {
     records: new Map(),
     linkToSession: new Map(),
     emailToSession: new Map(),
+    userRefToSession: new Map(),
   };
 }
 
@@ -70,13 +72,25 @@ function toDto(record: DemoSessionRecord): DemoSessionDto {
   };
 }
 
-function persist(record: DemoSessionRecord): DemoSessionRecord {
+interface PersistOptions {
+  readonly previousEmail?: string;
+  readonly previousUserRef?: string;
+}
+
+function persist(record: DemoSessionRecord, options: PersistOptions = {}): DemoSessionRecord {
   const previous = store.records.get(record.id);
   if (previous) {
-    const previousEmail = normalizeEmail(previous.email);
+    const trackedPreviousEmail = options.previousEmail ?? previous.email;
+    const previousEmail = normalizeEmail(trackedPreviousEmail);
     const nextEmail = normalizeEmail(record.email);
     if (previousEmail && previousEmail !== nextEmail) {
       store.emailToSession.delete(previousEmail);
+    }
+    const trackedPreviousUserRef = options.previousUserRef ?? previous.linkedUserRef;
+    const previousUserRef = normalizeUserRef(trackedPreviousUserRef);
+    const nextUserRef = normalizeUserRef(record.linkedUserRef);
+    if (previousUserRef && previousUserRef !== nextUserRef) {
+      store.userRefToSession.delete(previousUserRef);
     }
   }
   store.records.set(record.id, record);
@@ -86,6 +100,10 @@ function persist(record: DemoSessionRecord): DemoSessionRecord {
   const normalizedEmail = normalizeEmail(record.email);
   if (normalizedEmail) {
     store.emailToSession.set(normalizedEmail, record.id);
+  }
+  const normalizedUserRef = normalizeUserRef(record.linkedUserRef);
+  if (normalizedUserRef) {
+    store.userRefToSession.set(normalizedUserRef, record.id);
   }
   return record;
 }
@@ -131,6 +149,7 @@ export function setAccountLinkStatus(
   if (!record) {
     throw new Error(`Session ${sessionId} not found`);
   }
+  const previousUserRef = record.linkedUserRef;
 
   record.accountLinkStatus = status;
   if (options.sessionKey) {
@@ -165,7 +184,7 @@ export function setAccountLinkStatus(
         : SUBSCRIPTION_STATUS.Inactive;
   }
 
-  persist(record);
+  persist(record, { previousUserRef });
   emitSessionEvent(record);
   return toDto(record);
 }
@@ -199,6 +218,14 @@ export function resolveSessionIdByEmail(email: string): DemoSessionId | undefine
     return undefined;
   }
   return store.emailToSession.get(normalized);
+}
+
+export function resolveSessionIdByUserRef(userRef: string): DemoSessionId | undefined {
+  const normalized = normalizeUserRef(userRef);
+  if (!normalized) {
+    return undefined;
+  }
+  return store.userRefToSession.get(normalized);
 }
 
 export function touchWebhook(sessionId: DemoSessionId): void {

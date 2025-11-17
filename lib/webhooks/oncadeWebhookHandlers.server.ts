@@ -9,7 +9,7 @@ import {
   emitAccountLinkEvent,
 } from '@/lib/accountLink/accountLink.server';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
-import { setAccountLinkStatus, getSessionRecord, resolveSessionIdByEmail } from '@/lib/session/session.server';
+import { setAccountLinkStatus, getSessionRecord, resolveSessionIdByEmail, resolveSessionIdByUserRef } from '@/lib/session/session.server';
 import { activateSubscription, cancelSubscription, markSubscriptionPending } from '@/lib/subscription/subscription.server';
 
 import {
@@ -87,8 +87,9 @@ export async function handleSubscriptionWebhook(
 ): Promise<NextResponse> {
   const subscriptionSessionKey = extractSubscriptionSessionKey(payload.data);
   const payloadEmail = extractUserEmail(payload.data);
+  const payloadUserRef = extractUserRef(payload.data);
 
-  if (!subscriptionSessionKey && !payloadEmail) {
+  if (!subscriptionSessionKey && !payloadUserRef && !payloadEmail) {
     return NextResponse.json(
       { success: false, error: 'Session identifier missing.' },
       { status: HTTP_STATUS_BAD_REQUEST },
@@ -96,6 +97,10 @@ export async function handleSubscriptionWebhook(
   }
 
   let sessionId = subscriptionSessionKey ? resolveSessionIdFromLink(subscriptionSessionKey) : undefined;
+
+  if (!sessionId && payloadUserRef) {
+    sessionId = resolveSessionIdByUserRef(payloadUserRef);
+  }
 
   if (!sessionId && payloadEmail) {
     sessionId = resolveSessionIdByEmail(payloadEmail);

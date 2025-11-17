@@ -133,6 +133,33 @@ describe('Oncade webhook route', () => {
     expect(updated?.subscriptionStatus).toBe(SUBSCRIPTION_STATUS.Active);
   });
 
+  it('matches subscriptions by user reference when session key is missing', async () => {
+    const secret = process.env.DEMO_WEBHOOK_SECRET ?? 'test-secret';
+    const session = createDemoSession('user-ref-only@test.com');
+    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Linked, {
+      sessionKey: 'session_user_ref_only',
+      preserveMapping: true,
+      userRef: 'user_ref_only',
+    });
+    await markSubscriptionPending(session.id, 'demo');
+
+    const request = makeSignedRequest(
+      '/api/webhook',
+      {
+        event: 'Purchases.Subscriptions.Completed',
+        timestamp: new Date().toISOString(),
+        data: { user_ref: 'user_ref_only' },
+      },
+      secret,
+    );
+
+    const response = await oncadeWebhook(request);
+    expect(response.status).toBe(200);
+
+    const updated = getSessionDto(session.id);
+    expect(updated?.subscriptionStatus).toBe(SUBSCRIPTION_STATUS.Active);
+  });
+
   it('falls back to email when subscription webhook is missing session key', async () => {
     const secret = process.env.DEMO_WEBHOOK_SECRET ?? 'test-secret';
     const session = createDemoSession('email-only@test.com');

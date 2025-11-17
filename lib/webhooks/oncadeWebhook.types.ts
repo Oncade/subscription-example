@@ -14,6 +14,8 @@ export interface SubscriptionWebhookData {
   readonly sessionKey?: unknown;
   readonly userEmail?: unknown;
   readonly metadata?: Record<string, unknown> | null;
+  readonly user_ref?: unknown;
+  readonly userRef?: unknown;
 }
 
 export interface AccountLinkWebhookEnvelope {
