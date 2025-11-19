@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { GET as getAccountLinkStatus } from '@/app/api/account/link/status/route';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
-import { SESSION_HEADER } from '@/lib/constants';
+import { SESSION_HEADER, SESSION_STATE_HEADER } from '@/lib/constants';
 import * as sessionStore from '@/lib/session/session.server';
+import { SUBSCRIPTION_STATUS } from '@/lib/subscription/subscription.types';
 import { buildAppUrl, buildJsonRequest } from './helpers/http';
 
 const ACCOUNT_LINK_STATUS_URL = buildAppUrl('/api/account/link/status');
@@ -42,6 +43,38 @@ describe('GET /api/account/link/status', () => {
     expect(payload.success).toBe(true);
     expect(payload.data.accountLinkStatus).toBe(ACCOUNT_LINK_STATUS.Started);
     expect(payload.data.linkedUserRef).toBeUndefined();
+  });
+
+  it('rehydrates session state from request headers when store is empty', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      }),
+    );
+
+    const session = {
+      id: 'rehydrate-session',
+      createdAt: new Date().toISOString(),
+      email: 'rehydrate@example.com',
+      accountLinkStatus: ACCOUNT_LINK_STATUS.Started,
+      subscriptionStatus: SUBSCRIPTION_STATUS.Inactive,
+      linkSessionKey: 'rehydrate-key',
+    };
+    const encodedState = encodeURIComponent(JSON.stringify(session));
+
+    const response = await getAccountLinkStatus(
+      buildJsonRequest(ACCOUNT_LINK_STATUS_URL, {
+        headers: {
+          [SESSION_HEADER]: session.id,
+          [SESSION_STATE_HEADER]: encodedState,
+        },
+      }),
+    );
+    const payload = await response.json();
+    expect(payload.success).toBe(true);
   });
 
   it('returns linked when details endpoint includes user_ref', async () => {

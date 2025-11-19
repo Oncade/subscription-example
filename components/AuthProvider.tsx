@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import { SESSION_HEADER, SESSION_STORAGE_KEY } from '@/lib/constants';
+import { SESSION_HEADER, SESSION_STATE_HEADER, SESSION_STORAGE_KEY } from '@/lib/constants';
 import type { DemoSessionDto } from '@/lib/session/session.types';
 
 interface AuthContextValue {
@@ -18,12 +18,16 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-async function fetchSession(sessionId: string): Promise<DemoSessionDto | null> {
+async function fetchSession(sessionId: string, sessionState?: DemoSessionDto): Promise<DemoSessionDto | null> {
+  const headers: Record<string, string> = {
+    [SESSION_HEADER]: sessionId,
+  };
+  if (sessionState) {
+    headers[SESSION_STATE_HEADER] = encodeURIComponent(JSON.stringify(sessionState));
+  }
   const response = await fetch('/api/session', {
     method: 'GET',
-    headers: {
-      [SESSION_HEADER]: sessionId,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -47,51 +51,72 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState(true);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
 
-  const setSession = useCallback((next: DemoSessionDto | null, persist = true) => {
-    setSessionState(next);
-    if (persist && next) {
-      window.localStorage.setItem(SESSION_STORAGE_KEY, next.id);
-    } else if (!next) {
+  const persistSessionValue = useCallback((value: DemoSessionDto | null) => {
+    if (value) {
+      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(value));
+    } else {
       window.localStorage.removeItem(SESSION_STORAGE_KEY);
     }
   }, []);
 
-  const refreshSession = useCallback(async () => {
+  const readPersistedSession = useCallback((): { id: string; dto?: DemoSessionDto } | null => {
     const stored = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!stored) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(stored) as DemoSessionDto;
+      if (parsed && typeof parsed === 'object' && typeof parsed.id === 'string') {
+        return { id: parsed.id, dto: parsed };
+      }
+      return null;
+    } catch {
+      return { id: stored };
+    }
+  }, []);
+
+  const setSession = useCallback(
+    (next: DemoSessionDto | null, persist = true) => {
+      setSessionState(next);
+      if (persist) {
+        persistSessionValue(next);
+      } else if (!next) {
+        persistSessionValue(null);
+      }
+    },
+    [persistSessionValue],
+  );
+
+  const refreshSession = useCallback(async () => {
+    const stored = readPersistedSession();
     if (!stored) {
       setSessionState(null);
       return;
     }
 
-    const next = await fetchSession(stored);
+    const next = await fetchSession(stored.id, stored.dto);
     setSessionState(next);
-    if (!next) {
-      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    if (next) {
+      persistSessionValue(next);
+    } else {
+      persistSessionValue(null);
     }
-  }, []);
+  }, [persistSessionValue, readPersistedSession]);
 
   const signOut = useCallback(() => {
     setSessionState(null);
-    window.localStorage.removeItem(SESSION_STORAGE_KEY);
-  }, []);
+    persistSessionValue(null);
+  }, [persistSessionValue]);
 
   const openLoginModal = useCallback(() => setLoginModalOpen(true), []);
   const closeLoginModal = useCallback(() => setLoginModalOpen(false), []);
 
   useEffect(() => {
     void (async () => {
-      const stored = window.localStorage.getItem(SESSION_STORAGE_KEY);
-      if (stored) {
-        const next = await fetchSession(stored);
-        if (next) {
-          setSessionState(next);
-        } else {
-          window.localStorage.removeItem(SESSION_STORAGE_KEY);
-        }
-      }
+      await refreshSession();
       setLoading(false);
     })();
-  }, []);
+  }, [refreshSession]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

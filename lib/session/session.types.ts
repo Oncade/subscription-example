@@ -18,6 +18,7 @@ export interface DemoSessionRecord {
 
 export interface DemoSessionDto {
   readonly id: DemoSessionId;
+  readonly createdAt: string;
   readonly email: string;
   readonly accountLinkStatus: AccountLinkStatus;
   readonly subscriptionStatus: SubscriptionStatus;

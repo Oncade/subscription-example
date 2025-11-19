@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo } from 'react';
 
-import { SESSION_HEADER } from '@/lib/constants';
+import { SESSION_HEADER, SESSION_STATE_HEADER } from '@/lib/constants';
 import { useAuth } from '@/components/AuthProvider';
 
 export interface ApiResponse<T> {
@@ -34,6 +34,7 @@ export function useApi() {
         };
         if (session) {
           requestHeaders[SESSION_HEADER] = session.id;
+          requestHeaders[SESSION_STATE_HEADER] = encodeURIComponent(JSON.stringify(session));
         }
 
         const response = await fetch(url, {

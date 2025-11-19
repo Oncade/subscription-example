@@ -1,4 +1,5 @@
 export const SESSION_HEADER = 'x-demo-session-id' as const;
+export const SESSION_STATE_HEADER = 'x-demo-session-state' as const;
 export const LINK_SESSION_QUERY_KEY = 'sessionKey' as const;
 export const MOCK_ACCOUNT_LINK_WINDOW_NAME = 'subscription-demo-account-link' as const;
 export const DEMO_EVENT_STREAM_URL = '/api/events/stream' as const;

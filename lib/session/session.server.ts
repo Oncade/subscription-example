@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import { NextRequest } from 'next/server';
 
 import { ACCOUNT_LINK_STATUS, type AccountLinkStatus } from '@/lib/accountLink/accountLink.types';
-import { SESSION_HEADER } from '@/lib/constants';
+import { SESSION_HEADER, SESSION_STATE_HEADER } from '@/lib/constants';
 import { emitDemoEvent } from '@/lib/events/eventBus.server';
 import { DEMO_EVENT_TYPE } from '@/lib/events/eventBus.constants';
 import { SUBSCRIPTION_STATUS, type SubscriptionStatus } from '@/lib/subscription/subscription.types';
@@ -61,6 +61,7 @@ const store = globalWithStore[GLOBAL_KEY]!;
 function toDto(record: DemoSessionRecord): DemoSessionDto {
   return {
     id: record.id,
+    createdAt: record.createdAt.toISOString(),
     email: record.email,
     accountLinkStatus: record.accountLinkStatus,
     subscriptionStatus: record.subscriptionStatus,
@@ -106,6 +107,53 @@ function persist(record: DemoSessionRecord, options: PersistOptions = {}): DemoS
     store.userRefToSession.set(normalizedUserRef, record.id);
   }
   return record;
+}
+
+function parseSessionStateHeader(value: string | null): DemoSessionDto | undefined {
+  if (!value) {
+    return undefined;
+  }
+  try {
+    const decoded = decodeURIComponent(value);
+    const parsed = JSON.parse(decoded) as Partial<DemoSessionDto>;
+    if (!parsed || typeof parsed !== 'object') {
+      return undefined;
+    }
+    if (typeof parsed.id !== 'string' || typeof parsed.email !== 'string') {
+      return undefined;
+    }
+    return {
+      id: parsed.id,
+      createdAt: typeof parsed.createdAt === 'string' ? parsed.createdAt : new Date().toISOString(),
+      email: parsed.email,
+      accountLinkStatus: parsed.accountLinkStatus ?? ACCOUNT_LINK_STATUS.Idle,
+      subscriptionStatus: parsed.subscriptionStatus ?? SUBSCRIPTION_STATUS.Inactive,
+      linkedUserRef: parsed.linkedUserRef ?? undefined,
+      linkSessionKey: parsed.linkSessionKey ?? undefined,
+      linkExpiresAt: parsed.linkExpiresAt ?? undefined,
+      subscriptionActivatedAt: parsed.subscriptionActivatedAt ?? undefined,
+      lastWebhookAt: parsed.lastWebhookAt ?? undefined,
+    };
+  } catch (error) {
+    console.warn('Failed to parse session sync payload.', error);
+    return undefined;
+  }
+}
+
+function rehydrateSessionFromDto(dto: DemoSessionDto): DemoSessionRecord {
+  const record: DemoSessionRecord = {
+    id: dto.id,
+    createdAt: dto.createdAt ? new Date(dto.createdAt) : new Date(),
+    email: dto.email,
+    accountLinkStatus: dto.accountLinkStatus,
+    subscriptionStatus: dto.subscriptionStatus,
+    linkedUserRef: dto.linkedUserRef,
+    linkSessionKey: dto.linkSessionKey,
+    linkExpiresAt: dto.linkExpiresAt ? new Date(dto.linkExpiresAt) : undefined,
+    subscriptionActivatedAt: dto.subscriptionActivatedAt ? new Date(dto.subscriptionActivatedAt) : undefined,
+    lastWebhookAt: dto.lastWebhookAt ? new Date(dto.lastWebhookAt) : undefined,
+  };
+  return persist(record);
 }
 
 export function createDemoSession(email: string): DemoSessionDto {
@@ -238,6 +286,18 @@ export function touchWebhook(sessionId: DemoSessionId): void {
   emitSessionEvent(record);
 }
 
+function restoreSessionFromRequest(request: NextRequest, sessionId: DemoSessionId): DemoSessionRecord | undefined {
+  const encodedPayload = request.headers.get(SESSION_STATE_HEADER);
+  if (!encodedPayload) {
+    return undefined;
+  }
+  const dto = parseSessionStateHeader(encodedPayload);
+  if (!dto || dto.id !== sessionId) {
+    return undefined;
+  }
+  return rehydrateSessionFromDto(dto);
+}
+
 export function requireSessionFromRequest(request: NextRequest): DemoSessionRecord {
   const sessionId = request.headers.get(SESSION_HEADER);
   if (!sessionId) {
@@ -245,11 +305,16 @@ export function requireSessionFromRequest(request: NextRequest): DemoSessionReco
   }
 
   const record = getSessionRecord(sessionId);
-  if (!record) {
-    throw new Error(SESSION_ERROR_UNKNOWN_IDENTIFIER);
+  if (record) {
+    return record;
   }
 
-  return record;
+  const restored = restoreSessionFromRequest(request, sessionId);
+  if (restored) {
+    return restored;
+  }
+
+  throw new Error(SESSION_ERROR_UNKNOWN_IDENTIFIER);
 }
 
 export function resolveSessionErrorStatus(error: Error, fallbackStatus = 400): number {
