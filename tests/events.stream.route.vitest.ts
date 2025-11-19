@@ -56,6 +56,7 @@ describe('GET /api/events/stream', () => {
         type: DEMO_EVENT_TYPE.SessionUpdated,
         payload: {
           id: 'demo-session',
+          createdAt: new Date().toISOString(),
           email: 'demo@example.com',
           accountLinkStatus: ACCOUNT_LINK_STATUS.Linked,
           subscriptionStatus: SUBSCRIPTION_STATUS.Active,
