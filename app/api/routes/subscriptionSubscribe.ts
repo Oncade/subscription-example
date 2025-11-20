@@ -1,3 +1,5 @@
+'use server';
+
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getOncadeIntegrationConfig } from '@/lib/env/config.server';
@@ -11,7 +13,7 @@ import { parseSubscribeRequestBody } from '@/lib/subscription/subscribeRequest.s
 const HTTP_STATUS_BAD_REQUEST = 400;
 const HTTP_STATUS_INTERNAL_ERROR = 500;
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+export async function handleSubscriptionSubscribePost(request: NextRequest): Promise<NextResponse> {
   try {
     const body = await parseSubscribeRequestBody(request);
     const safeRedirectUrl = sanitizeRedirectUrl(body.redirectUrl);
@@ -20,7 +22,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const plan = await resolveDemoPlanConfig({ forceRefresh: true });
 
     if (!plan.itemId) {
-      throw new CheckoutRedirectError('Subscription plan configuration missing checkout item identifier', HTTP_STATUS_INTERNAL_ERROR);
+      throw new CheckoutRedirectError(
+        'Subscription plan configuration missing checkout item identifier',
+        HTTP_STATUS_INTERNAL_ERROR,
+      );
     }
 
     const redirectTarget = await requestCheckoutRedirect(
@@ -49,6 +54,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const status = resolveSessionErrorStatus(error, HTTP_STATUS_BAD_REQUEST);
       return NextResponse.json({ success: false, error: error.message }, { status });
     }
-    return NextResponse.json({ success: false, error: 'Unable to trigger subscription' }, { status: HTTP_STATUS_INTERNAL_ERROR });
+    return NextResponse.json(
+      { success: false, error: 'Unable to trigger subscription' },
+      { status: HTTP_STATUS_INTERNAL_ERROR },
+    );
   }
 }

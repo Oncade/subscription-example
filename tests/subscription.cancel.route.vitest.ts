@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockInstance } from 'vitest';
 
-import { POST as cancelRoute } from '@/app/api/subscription/cancel/route';
+import { handleSubscriptionCancelPost } from '@/app/api/routes/subscriptionCancel';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
 import { SESSION_HEADER } from '@/lib/constants';
 import { createDemoSession, setAccountLinkStatus } from '@/lib/session/session.server';
@@ -53,7 +53,7 @@ describe('POST /api/subscription/cancel', () => {
       )
       .mockResolvedValueOnce(jsonResponse({ success: true }, 200));
 
-    const response = await cancelRoute(buildRequest(session.id));
+    const response = await handleSubscriptionCancelPost(buildRequest(session.id));
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.success).toBe(true);
@@ -83,7 +83,7 @@ describe('POST /api/subscription/cancel', () => {
       }),
     );
 
-    const response = await cancelRoute(buildRequest(session.id));
+    const response = await handleSubscriptionCancelPost(buildRequest(session.id));
     expect(response.status).toBe(404);
     const payload = await response.json();
     expect(payload.success).toBe(false);
@@ -106,7 +106,7 @@ describe('POST /api/subscription/cancel', () => {
       }),
     );
 
-    const response = await cancelRoute(buildRequest(session.id));
+    const response = await handleSubscriptionCancelPost(buildRequest(session.id));
     expect(response.status).toBe(404);
     const payload = await response.json();
     expect(payload.success).toBe(false);
@@ -120,7 +120,7 @@ describe('POST /api/subscription/cancel', () => {
       preserveMapping: true,
     });
 
-    const response = await cancelRoute(buildRequest(session.id));
+    const response = await handleSubscriptionCancelPost(buildRequest(session.id));
     expect(response.status).toBe(409);
     const payload = await response.json();
     expect(payload.success).toBe(false);
@@ -129,7 +129,7 @@ describe('POST /api/subscription/cancel', () => {
 
   it('returns 409 when account has not been linked', async () => {
     const session = createDemoSession('cancel-not-linked@test.com');
-    const response = await cancelRoute(buildRequest(session.id));
+    const response = await handleSubscriptionCancelPost(buildRequest(session.id));
     expect(response.status).toBe(409);
     const payload = await response.json();
     expect(payload.success).toBe(false);
@@ -154,7 +154,7 @@ describe('POST /api/subscription/cancel', () => {
       )
       .mockResolvedValueOnce(jsonResponse({ error: 'Cancel failed' }, 500));
 
-    const response = await cancelRoute(buildRequest(session.id));
+    const response = await handleSubscriptionCancelPost(buildRequest(session.id));
     expect(response.status).toBe(500);
     const payload = await response.json();
     expect(payload.success).toBe(false);

@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-import { POST as accountLinkWebhook } from '@/app/api/webhooks/account-linking/route';
+import { handleWebhookAccountLinkingPost } from '@/app/api/routes/webhookAccountLinking';
 import { initiateAccountLinkSession } from '@/lib/accountLink/accountLink.server';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
 import { WEBHOOK_SIGNATURE_HEADER } from '@/lib/constants';
@@ -51,7 +51,7 @@ describe('account-linking webhook route', () => {
       secret,
     );
 
-    const response = await accountLinkWebhook(request);
+    const response = await handleWebhookAccountLinkingPost(request);
     expect(response.status).toBe(200);
 
     const updated = getSessionDto(session.id);
@@ -88,7 +88,7 @@ describe('account-linking webhook route', () => {
       },
     });
 
-    const response = await accountLinkWebhook(request);
+    const response = await handleWebhookAccountLinkingPost(request);
     expect(response.status).toBe(401);
   });
 });

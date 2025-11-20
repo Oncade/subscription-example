@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { GET as getAccountLinkStatus } from '@/app/api/account/link/status/route';
+import { handleAccountLinkStatusGet } from '@/app/api/routes/accountLinkStatus';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
 import { SESSION_HEADER, SESSION_STATE_HEADER } from '@/lib/constants';
 import * as sessionStore from '@/lib/session/session.server';
@@ -38,7 +38,7 @@ describe('GET /api/account/link/status', () => {
       preserveMapping: true,
     });
 
-    const response = await getAccountLinkStatus(buildRequest(session.id));
+    const response = await handleAccountLinkStatusGet(buildRequest(session.id));
     const payload = await response.json();
     expect(payload.success).toBe(true);
     expect(payload.data.accountLinkStatus).toBe(ACCOUNT_LINK_STATUS.Started);
@@ -65,7 +65,7 @@ describe('GET /api/account/link/status', () => {
     };
     const encodedState = encodeURIComponent(JSON.stringify(session));
 
-    const response = await getAccountLinkStatus(
+    const response = await handleAccountLinkStatusGet(
       buildJsonRequest(ACCOUNT_LINK_STATUS_URL, {
         headers: {
           [SESSION_HEADER]: session.id,
@@ -98,7 +98,7 @@ describe('GET /api/account/link/status', () => {
       preserveMapping: true,
     });
 
-    const response = await getAccountLinkStatus(buildRequest(session.id));
+    const response = await handleAccountLinkStatusGet(buildRequest(session.id));
     const payload = await response.json();
     expect(payload.success).toBe(true);
     expect(payload.data.accountLinkStatus).toBe(ACCOUNT_LINK_STATUS.Linked);
@@ -131,7 +131,7 @@ describe('GET /api/account/link/status', () => {
 
     const setStatusSpy = vi.spyOn(sessionStore, 'setAccountLinkStatus');
 
-    const response = await getAccountLinkStatus(buildRequest(session.id));
+    const response = await handleAccountLinkStatusGet(buildRequest(session.id));
     const payload = await response.json();
 
     expect(payload.success).toBe(true);

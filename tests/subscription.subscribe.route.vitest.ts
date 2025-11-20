@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { POST as subscribe } from '@/app/api/subscription/subscribe/route';
+import { handleSubscriptionSubscribePost } from '@/app/api/routes/subscriptionSubscribe';
 import { DEFAULT_ONCADE_API_BASE_URL, SESSION_HEADER } from '@/lib/constants';
 import { createDemoSession, getSessionDto, setAccountLinkStatus } from '@/lib/session/session.server';
 import { SUBSCRIPTION_STATUS } from '@/lib/subscription/subscription.types';
@@ -64,7 +64,7 @@ describe('POST /api/subscription/subscribe', () => {
       .mockResolvedValueOnce(planResponse)
       .mockResolvedValueOnce(checkoutResponse);
 
-    const response = await subscribe(buildRequest(session.id));
+    const response = await handleSubscriptionSubscribePost(buildRequest(session.id));
     expect(response.status).toBe(200);
 
     const payload = await response.json();
@@ -96,7 +96,7 @@ describe('POST /api/subscription/subscribe', () => {
       .mockResolvedValueOnce(planResponse)
       .mockResolvedValueOnce(errorResponse);
 
-    const response = await subscribe(buildRequest(session.id));
+    const response = await handleSubscriptionSubscribePost(buildRequest(session.id));
     expect(response.status).toBe(404);
 
     const payload = await response.json();
@@ -115,7 +115,7 @@ describe('POST /api/subscription/subscribe', () => {
 
     vi.spyOn(global, 'fetch').mockResolvedValueOnce(planResponse).mockRejectedValueOnce(new Error('connect ECONNREFUSED'));
 
-    const response = await subscribe(buildRequest(session.id));
+    const response = await handleSubscriptionSubscribePost(buildRequest(session.id));
     expect(response.status).toBe(502);
 
     const payload = await response.json();
@@ -133,7 +133,7 @@ describe('POST /api/subscription/subscribe', () => {
     delete process.env.DEMO_PLAN_ITEM_ID;
 
     const fetchSpy = vi.spyOn(global, 'fetch');
-    const response = await subscribe(buildRequest(session.id));
+    const response = await handleSubscriptionSubscribePost(buildRequest(session.id));
 
     expect(response.status).toBe(500);
     const payload = await response.json();

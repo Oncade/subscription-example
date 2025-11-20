@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { GET as eventsStreamRoute } from '@/app/api/events/stream/route';
+import { handleEventsStreamGet } from '@/app/api/routes/eventsStream';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
 import * as eventBus from '@/lib/events/eventBus.server';
 import { DEMO_EVENT_TYPE } from '@/lib/events/eventBus.constants';
@@ -32,7 +32,7 @@ function extractDataPayload(message: string): unknown {
 describe('GET /api/events/stream', () => {
   it('emits the ready signal, forwards demo events, and streams heartbeat pings', async () => {
     vi.useFakeTimers();
-    const response = await eventsStreamRoute();
+    const response = await handleEventsStreamGet();
 
     try {
       expect(response.status).toBe(200);
@@ -92,7 +92,7 @@ describe('GET /api/events/stream', () => {
     const unsubscribe = vi.fn();
     const subscribeSpy = vi.spyOn(eventBus, 'subscribeToDemoEvents').mockReturnValue(unsubscribe);
 
-    const response = await eventsStreamRoute();
+    const response = await handleEventsStreamGet();
     expect(subscribeSpy).toHaveBeenCalledTimes(1);
 
     const reader = response.body?.getReader();

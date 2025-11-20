@@ -1,3 +1,5 @@
+'use server';
+
 import { NextRequest, NextResponse } from 'next/server';
 
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
@@ -9,7 +11,7 @@ import {
   setAccountLinkStatus,
 } from '@/lib/session/session.server';
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function handleAccountLinkStatusGet(request: NextRequest): Promise<NextResponse> {
   try {
     const record = requireSessionFromRequest(request);
     let dto = getSessionDto(record.id);

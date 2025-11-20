@@ -1,3 +1,5 @@
+'use server';
+
 import { NextRequest, NextResponse } from 'next/server';
 
 import { ACCOUNT_LINK_STATUS, type AccountLinkStatus } from '@/lib/accountLink/accountLink.types';
@@ -35,7 +37,7 @@ function emitAccountLinkNotification(event: string, status: AccountLinkStatus): 
   emitWebhookNotification(formatWebhookSummary(event, status), tone);
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+export async function handleWebhookAccountLinkingPost(request: NextRequest): Promise<NextResponse> {
   const secret = resolveWebhookSecret();
   if (!secret) {
     return NextResponse.json({ success: false, error: 'Webhook secret not configured.' }, { status: 500 });

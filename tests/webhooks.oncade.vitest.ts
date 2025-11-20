@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-import { POST as oncadeWebhook } from '@/app/api/webhook/route';
+import { handleOncadeWebhookPost } from '@/app/api/routes/webhookOncade';
 import { createDemoSession, getSessionDto, setAccountLinkStatus } from '@/lib/session/session.server';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
 import { markSubscriptionPending } from '@/lib/subscription/subscription.server';
@@ -62,7 +62,7 @@ describe('Oncade webhook route', () => {
       secret,
     );
 
-    const response = await oncadeWebhook(request);
+    const response = await handleOncadeWebhookPost(request);
     expect(response.status).toBe(200);
 
     const updated = getSessionDto(session.id);
@@ -92,7 +92,7 @@ describe('Oncade webhook route', () => {
         secret,
       );
 
-      const response = await oncadeWebhook(request);
+      const response = await handleOncadeWebhookPost(request);
       expect(response.status).toBe(200);
 
       const accountLinkEvents = emitSpy.mock.calls
@@ -126,7 +126,7 @@ describe('Oncade webhook route', () => {
       secret,
     );
 
-    const response = await oncadeWebhook(request);
+    const response = await handleOncadeWebhookPost(request);
     expect(response.status).toBe(200);
 
     const updated = getSessionDto(session.id);
@@ -153,7 +153,7 @@ describe('Oncade webhook route', () => {
       secret,
     );
 
-    const response = await oncadeWebhook(request);
+    const response = await handleOncadeWebhookPost(request);
     expect(response.status).toBe(200);
 
     const updated = getSessionDto(session.id);
@@ -175,7 +175,7 @@ describe('Oncade webhook route', () => {
       secret,
     );
 
-    const response = await oncadeWebhook(request);
+    const response = await handleOncadeWebhookPost(request);
     expect(response.status).toBe(200);
 
     const updated = getSessionDto(session.id);
@@ -195,7 +195,7 @@ describe('Oncade webhook route', () => {
       },
     });
 
-    const response = await oncadeWebhook(request);
+    const response = await handleOncadeWebhookPost(request);
     expect(response.status).toBe(401);
   });
 
@@ -211,7 +211,7 @@ describe('Oncade webhook route', () => {
       secret,
     );
 
-    const response = await oncadeWebhook(request);
+    const response = await handleOncadeWebhookPost(request);
     expect(response.status).toBe(202);
   });
 
@@ -228,7 +228,7 @@ describe('Oncade webhook route', () => {
         'invalid-secret',
       );
 
-      const response = await oncadeWebhook(request);
+      const response = await handleOncadeWebhookPost(request);
       expect(response.status).toBe(401);
 
       const notificationEvents = emitSpy.mock.calls

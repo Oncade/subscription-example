@@ -1,3 +1,5 @@
+'use server';
+
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getDemoEnvironmentSummary } from '@/lib/env/config.server';
@@ -8,7 +10,7 @@ import {
   SESSION_ERROR_UNKNOWN_IDENTIFIER,
 } from '@/lib/session/session.server';
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function handleSubscriptionStatusGet(request: NextRequest): Promise<NextResponse> {
   try {
     const record = requireSessionFromRequest(request);
     const session = getSessionDto(record.id);

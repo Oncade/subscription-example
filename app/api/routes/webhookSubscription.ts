@@ -1,3 +1,5 @@
+'use server';
+
 import { NextRequest, NextResponse } from 'next/server';
 
 import { WEBHOOK_SIGNATURE_HEADER } from '@/lib/constants';
@@ -10,7 +12,7 @@ import {
   verifyWebhookSignature,
 } from '@/lib/webhooks/webhookVerification.server';
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+export async function handleWebhookSubscriptionPost(request: NextRequest): Promise<NextResponse> {
   const secret = resolveWebhookSecret();
   if (!secret) {
     return NextResponse.json({ success: false, error: 'Webhook secret not configured.' }, { status: 500 });

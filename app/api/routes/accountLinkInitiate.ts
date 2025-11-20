@@ -1,10 +1,12 @@
+'use server';
+
 import { NextRequest, NextResponse } from 'next/server';
 
 import { initiateAccountLinkSession } from '@/lib/accountLink/accountLink.server';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
 import { requireSessionFromRequest, resolveSessionErrorStatus } from '@/lib/session/session.server';
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+export async function handleAccountLinkInitiatePost(request: NextRequest): Promise<NextResponse> {
   try {
     const record = requireSessionFromRequest(request);
     const linkSession = await initiateAccountLinkSession(record.id, request.nextUrl.origin);

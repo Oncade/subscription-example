@@ -1,10 +1,12 @@
+'use server';
+
 import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveDemoPlanConfig } from '@/lib/env/planConfig.server';
 import { resolveSessionErrorStatus, requireSessionFromRequest } from '@/lib/session/session.server';
 import { forwardCancellation, lookupActiveSubscription } from '@/lib/subscription/subscriptionCancellation.server';
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+export async function handleSubscriptionCancelPost(request: NextRequest): Promise<NextResponse> {
   try {
     const session = requireSessionFromRequest(request);
     const plan = await resolveDemoPlanConfig({ forceRefresh: true });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { POST as createSession } from '@/app/api/session/route';
+import { handleSessionPost } from '@/app/api/routes/session';
 import { SESSION_HEADER } from '@/lib/constants';
 import { buildAppUrl, buildJsonRequest } from './helpers/http';
 
@@ -16,7 +16,7 @@ function buildRequest(body: Record<string, unknown>) {
 describe('POST /api/session', () => {
   it('creates a session', async () => {
     const request = buildRequest({ email: 'hero@ea.com' });
-    const response = await createSession(request);
+    const response = await handleSessionPost(request);
 
     expect(response.status).toBe(201);
     expect(response.headers.get(SESSION_HEADER)).toBeTypeOf('string');
@@ -28,7 +28,7 @@ describe('POST /api/session', () => {
 
   it('requires email', async () => {
     const request = buildRequest({});
-    const response = await createSession(request);
+    const response = await handleSessionPost(request);
 
     expect(response.status).toBe(400);
     const payload = await response.json();

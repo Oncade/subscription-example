@@ -1,3 +1,5 @@
+'use server';
+
 import { NextRequest, NextResponse } from 'next/server';
 
 import { SESSION_HEADER } from '@/lib/constants';
@@ -11,7 +13,7 @@ import {
 import { sessionInvalidResponse } from '@/lib/session/sessionApi.helpers';
 import type { CreateSessionBody } from '@/lib/session/sessionApi.types';
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+export async function handleSessionPost(request: NextRequest): Promise<NextResponse> {
   let body: Partial<CreateSessionBody> | undefined;
   try {
     body = (await request.json()) as Partial<CreateSessionBody>;
@@ -39,7 +41,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   );
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function handleSessionGet(request: NextRequest): Promise<NextResponse> {
   try {
     const record = requireSessionFromRequest(request);
     const dto = getSessionDto(record.id);
@@ -62,9 +64,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-export const dynamic = 'force-dynamic';
-
-export function OPTIONS(): NextResponse {
+export async function handleSessionOptions(): Promise<NextResponse> {
   return NextResponse.json(
     { success: true },
     {
