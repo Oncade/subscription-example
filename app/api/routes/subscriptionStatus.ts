@@ -4,22 +4,22 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getDemoEnvironmentSummary } from '@/lib/env/config.server';
 import {
-  getSessionDto,
-  requireSessionFromRequest,
+  getSessionDtoFromRequest,
   resolveSessionErrorStatus,
   SESSION_ERROR_UNKNOWN_IDENTIFIER,
 } from '@/lib/session/session.server';
 
 export async function handleSubscriptionStatusGet(request: NextRequest): Promise<NextResponse> {
   try {
-    const record = requireSessionFromRequest(request);
-    const session = getSessionDto(record.id);
+    const session = getSessionDtoFromRequest(request);
     if (!session) {
       return NextResponse.json({ success: false, error: 'Session not found' }, { status: 404 });
     }
 
     const summary = await getDemoEnvironmentSummary();
 
+    // Return session state from request (client-side storage)
+    // Server doesn't modify or store session state
     return NextResponse.json({
       success: true,
       data: {

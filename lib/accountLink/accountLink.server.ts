@@ -8,7 +8,7 @@ import { DEMO_EVENT_TYPE } from '@/lib/events/eventBus.constants';
 import type { AccountLinkEventPayload, AccountLinkSessionDto, AccountLinkStatus } from '@/lib/accountLink/accountLink.types';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
 import { getOncadeIntegrationConfig } from '@/lib/env/config.server';
-import { getSessionRecord, mapLinkSessionToSessionId, setAccountLinkStatus, touchWebhook } from '@/lib/session/session.server';
+import { deriveSessionId } from '@/lib/session/session.server';
 import type { DemoSessionId } from '@/lib/session/session.types';
 
 interface RemoteInitiateResponse {
@@ -44,17 +44,14 @@ export function emitAccountLinkEvent(options: AccountLinkEventOptions): void {
   emitDemoEvent({ type: DEMO_EVENT_TYPE.AccountLinkEvent, payload: eventPayload });
 }
 
-export async function initiateAccountLinkSession(sessionId: DemoSessionId, origin: string): Promise<AccountLinkSessionDto> {
-  const session = getSessionRecord(sessionId);
-  if (!session) {
-    throw new Error(`Session ${sessionId} not found`);
-  }
+export async function initiateAccountLinkSession(sessionId: DemoSessionId, email: string, origin: string): Promise<AccountLinkSessionDto> {
+  // Session state is managed client-side, we just need the sessionId and email to initiate the link
 
   const { apiBaseUrl, serverApiKey, gameId } = getOncadeIntegrationConfig();
   const trimmedBaseUrl = apiBaseUrl.replace(/\/$/, '');
 
   const requestBody = {
-    email: session.email,
+    email: email.trim().toLowerCase(),
   };
 
   const response = await fetch(`${trimmedBaseUrl}/api/v1/users/link/initiate`, {
@@ -77,20 +74,9 @@ export async function initiateAccountLinkSession(sessionId: DemoSessionId, origi
   const status = response.status === 200 ? ACCOUNT_LINK_STATUS.Linked : ACCOUNT_LINK_STATUS.Started;
   const expiresAt = status === ACCOUNT_LINK_STATUS.Started ? new Date(Date.now() + DEMO_LINK_TIMEOUT_MS) : undefined;
   const redirectUrl = resolveLinkUrl(payload.url, apiBaseUrl, payload.sessionKey, origin);
-  setAccountLinkStatus(sessionId, status, {
-    sessionKey: payload.sessionKey,
-    expiresAt,
-    preserveMapping: status === ACCOUNT_LINK_STATUS.Linked,
-  });
-
-  if (status === ACCOUNT_LINK_STATUS.Linked) {
-    emitAccountLinkEvent({
-      sessionId,
-      sessionKey: payload.sessionKey,
-      status,
-      provider: 'oncade',
-    });
-  }
+  
+  // Session state is managed client-side, no need to store on server
+  // Events are sent directly to clients via webhook handlers
 
   return {
     sessionKey: payload.sessionKey,
@@ -128,6 +114,8 @@ function resolveLinkUrl(urlFromApi: string | undefined, apiBaseUrl: string, sess
   return fallback;
 }
 
+// These functions are no longer needed - webhooks are handled client-side
+// Keeping for backwards compatibility but they're no-ops
 export function completeAccountLink(
   sessionId: DemoSessionId,
   sessionKey: string,
@@ -136,20 +124,7 @@ export function completeAccountLink(
   triggeredAt?: string,
   topic?: string,
 ): void {
-  setAccountLinkStatus(sessionId, ACCOUNT_LINK_STATUS.Linked, {
-    userRef,
-    preserveMapping: true,
-  });
-  touchWebhook(sessionId);
-  emitAccountLinkEvent({
-    sessionId,
-    sessionKey,
-    status: ACCOUNT_LINK_STATUS.Linked,
-    provider,
-    userRef,
-    triggeredAt,
-    topic,
-  });
+  // No-op - webhooks are handled client-side
 }
 
 export function cancelAccountLink(
@@ -160,24 +135,12 @@ export function cancelAccountLink(
   triggeredAt?: string,
   topic?: string,
 ): void {
-  setAccountLinkStatus(sessionId, ACCOUNT_LINK_STATUS.Canceled, {
-    userRef: userRef ?? null,
-    preserveMapping: true,
-  });
-  touchWebhook(sessionId);
-  emitAccountLinkEvent({
-    sessionId,
-    sessionKey,
-    status: ACCOUNT_LINK_STATUS.Canceled,
-    provider,
-    userRef,
-    triggeredAt,
-    topic,
-  });
+  // No-op - webhooks are handled client-side
 }
 
 export function resolveSessionIdFromLink(sessionKey: string): DemoSessionId | undefined {
-  return mapLinkSessionToSessionId(sessionKey);
+  // No-op - sessions are client-side only
+  return undefined;
 }
 
 export const ACCOUNT_LINK_WINDOW_NAME = MOCK_ACCOUNT_LINK_WINDOW_NAME;

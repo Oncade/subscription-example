@@ -3,7 +3,7 @@ import 'server-only';
 import { emitDemoEvent } from '@/lib/events/eventBus.server';
 import { DEMO_EVENT_TYPE } from '@/lib/events/eventBus.constants';
 import { resolveDemoPlanConfig } from '@/lib/env/planConfig.server';
-import { setSubscriptionStatus, touchWebhook } from '@/lib/session/session.server';
+// Session state is managed client-side, no server-side storage needed
 import type { DemoSessionId } from '@/lib/session/session.types';
 
 import type { SubscriptionEventPayload } from './subscription.types';
@@ -15,24 +15,8 @@ async function emitSubscriptionEvent(
   provider: SubscriptionEventPayload['provider'],
   topic?: string,
 ): Promise<void> {
-  const plan = await resolveDemoPlanConfig();
-  const occurredAt = new Date();
-  const resolvedTopic =
-    topic && topic.trim().length > 0 ? topic : `${provider}.subscription.${status}`;
-
-  setSubscriptionStatus(sessionId, status, { occurredAt });
-  touchWebhook(sessionId);
-  emitDemoEvent({
-    type: DEMO_EVENT_TYPE.SubscriptionEvent,
-    payload: {
-      sessionId,
-      status,
-      occurredAt: occurredAt.toISOString(),
-      provider,
-      planCode: plan.code,
-      topic: resolvedTopic,
-    },
-  });
+  // No-op - webhooks are handled client-side
+  // Session state is managed client-side in localStorage
 }
 
 export async function activateSubscription(

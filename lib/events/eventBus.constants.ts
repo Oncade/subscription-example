@@ -3,6 +3,7 @@ export const DEMO_EVENT_TYPE = {
   AccountLinkEvent: 'account-link.event',
   SubscriptionEvent: 'subscription.event',
   WebhookNotification: 'webhook.notification',
+  RawWebhookEvent: 'webhook.raw',
 } as const;
 
 export type DemoEventType = (typeof DEMO_EVENT_TYPE)[keyof typeof DEMO_EVENT_TYPE];

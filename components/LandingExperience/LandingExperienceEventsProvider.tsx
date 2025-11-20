@@ -8,6 +8,7 @@ import { DEMO_EVENT_TYPE } from '@/lib/events/eventBus.constants';
 import { ACCOUNT_LINK_STATUS, type AccountLinkStatus } from '@/lib/accountLink/accountLink.types';
 import { SUBSCRIPTION_STATUS, type SubscriptionStatus } from '@/lib/subscription/subscription.types';
 import { useEventStream } from '@/hooks/useEventStream';
+import type { OncadeWebhookEnvelope } from '@/lib/webhooks/oncadeWebhook.types';
 
 import { MAX_EVENT_LOG_ENTRIES } from './landingExperience.constants';
 import type {
@@ -22,6 +23,60 @@ import {
   getSubscriptionEventTone,
   makeEventId,
 } from './landingExperience.utils';
+
+const PROCESSED_EVENTS_STORAGE_KEY = 'demo.processedWebhookEvents';
+const MAX_STORED_EVENTS = 1000;
+
+function getEventKey(payload: OncadeWebhookEnvelope): string {
+  const idempotencyKey = payload.data?.metadata && typeof payload.data.metadata === 'object' && 'idempotencyKey' in payload.data.metadata
+    ? String(payload.data.metadata.idempotencyKey)
+    : null;
+  
+  if (idempotencyKey) {
+    return `${payload.event}:${idempotencyKey}`;
+  }
+  
+  return `${payload.event}:${payload.timestamp || Date.now()}`;
+}
+
+function isEventProcessed(eventKey: string): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  
+  try {
+    const stored = localStorage.getItem(PROCESSED_EVENTS_STORAGE_KEY);
+    if (!stored) {
+      return false;
+    }
+    const processedEvents: string[] = JSON.parse(stored);
+    return processedEvents.includes(eventKey);
+  } catch {
+    return false;
+  }
+}
+
+function markEventAsProcessed(eventKey: string): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  
+  try {
+    const stored = localStorage.getItem(PROCESSED_EVENTS_STORAGE_KEY);
+    const processedEvents: string[] = stored ? JSON.parse(stored) : [];
+    
+    if (!processedEvents.includes(eventKey)) {
+      processedEvents.push(eventKey);
+      // Keep only the most recent events
+      if (processedEvents.length > MAX_STORED_EVENTS) {
+        processedEvents.shift();
+      }
+      localStorage.setItem(PROCESSED_EVENTS_STORAGE_KEY, JSON.stringify(processedEvents));
+    }
+  } catch {
+    // Ignore localStorage errors
+  }
+}
 
 const LandingExperienceEventsContext = createContext<LandingExperienceEventsContextValue | undefined>(undefined);
 
@@ -41,10 +96,6 @@ export function LandingExperienceEventsProvider({
   );
   const [activatedAt, setActivatedAtState] = useState<string | undefined>(() => session?.subscriptionActivatedAt);
   const [eventLog, setEventLog] = useState<EventLogEntry[]>([]);
-
-  useEffect(() => {
-    sessionRef.current = session;
-  }, [session]);
 
   const appendEvent = useCallback((entry: Omit<EventLogEntry, 'id'>) => {
     setEventLog((prev) => {
@@ -69,6 +120,17 @@ export function LandingExperienceEventsProvider({
     setActivatedAtState(value);
   }, []);
 
+  // Sync state from session when it changes
+  useEffect(() => {
+    sessionRef.current = session;
+    if (session) {
+      updateAccountLinkStatus(session.accountLinkStatus);
+      updateSubscriptionStatus(session.subscriptionStatus);
+      updateLinkExpiresAt(session.linkExpiresAt);
+      updateActivatedAt(session.subscriptionActivatedAt);
+    }
+  }, [session, updateAccountLinkStatus, updateSubscriptionStatus, updateLinkExpiresAt, updateActivatedAt]);
+
   const handleDemoEvent = useCallback(
     (event: DemoEvent) => {
       const currentSession = sessionRef.current;
@@ -85,6 +147,204 @@ export function LandingExperienceEventsProvider({
           updateLinkExpiresAt(event.payload.linkExpiresAt);
           updateActivatedAt(event.payload.subscriptionActivatedAt);
         }
+        return;
+      }
+
+      if (event.type === DEMO_EVENT_TYPE.RawWebhookEvent) {
+        const webhookPayload = event.payload;
+        const eventKey = getEventKey(webhookPayload);
+        
+        const sessionKey = webhookPayload.data?.sessionKey as string | undefined;
+        const rawUserRef = (webhookPayload.data?.user_ref || webhookPayload.data?.userRef);
+        // Handle case where user_ref might be the string 'null' or actual null
+        const userRef = rawUserRef && rawUserRef !== 'null' ? String(rawUserRef) : undefined;
+        const userEmail = webhookPayload.data?.userEmail as string | undefined;
+
+        // Check if this event is relevant to the current session FIRST
+        // Match by: sessionKey (exact match), userRef, or email
+        // For account link events, we also accept if session doesn't have linkSessionKey yet AND email matches
+        const isAccountLinkEvent = webhookPayload.event?.startsWith('User.Account.Link.');
+        const isSubscriptionEvent = webhookPayload.event?.startsWith('Purchases.Subscriptions.') || 
+                                     webhookPayload.event?.startsWith('Subscription.');
+        
+        const sessionKeyMatches = sessionKey && currentSession?.linkSessionKey === sessionKey;
+        const userRefMatches = userRef && currentSession?.linkedUserRef === userRef;
+        const emailMatches = userEmail && currentSession?.email?.toLowerCase() === userEmail?.toLowerCase();
+        
+        // For first-time account link events: if session doesn't have linkSessionKey yet, accept if email matches OR if we have a sessionKey
+        const firstTimeAccountLinkMatch = isAccountLinkEvent && 
+          sessionKey && 
+          !currentSession?.linkSessionKey && 
+          (emailMatches || !userEmail); // Accept if email matches OR if no email in webhook (we'll match by sessionKey)
+        
+        // For subscription events: always match by email if provided, even if userRef doesn't match yet
+        const subscriptionEmailMatch = isSubscriptionEvent && emailMatches;
+        
+        // For account link events without email, try to match by sessionKey if session doesn't have linkSessionKey yet
+        const accountLinkSessionKeyMatch = isAccountLinkEvent && 
+          sessionKey && 
+          !currentSession?.linkSessionKey;
+        
+        // For account link events: if status is Canceled or Idle, accept new sessionKey (allows retry after cancel)
+        const canAcceptNewAccountLink = isAccountLinkEvent && 
+          sessionKey && 
+          (currentSession?.accountLinkStatus === ACCOUNT_LINK_STATUS.Canceled || 
+           currentSession?.accountLinkStatus === ACCOUNT_LINK_STATUS.Idle);
+        
+        const isRelevantToSession = sessionKeyMatches || userRefMatches || emailMatches || firstTimeAccountLinkMatch || subscriptionEmailMatch || accountLinkSessionKeyMatch || canAcceptNewAccountLink;
+
+        console.log('Webhook event received', {
+          event: webhookPayload.event,
+          sessionKey,
+          userRef,
+          userEmail,
+          currentSessionEmail: currentSession?.email,
+          currentSessionLinkSessionKey: currentSession?.linkSessionKey,
+          currentSessionLinkedUserRef: currentSession?.linkedUserRef,
+          sessionKeyMatches,
+          userRefMatches,
+          emailMatches,
+          firstTimeAccountLinkMatch,
+          subscriptionEmailMatch,
+          accountLinkSessionKeyMatch,
+          canAcceptNewAccountLink,
+          isRelevantToSession,
+          eventKey,
+          alreadyProcessed: isEventProcessed(eventKey),
+        });
+
+        // Only check if processed AFTER checking relevance
+        // This way, if an event doesn't match, it won't be marked as processed
+        if (!isRelevantToSession) {
+          console.log('Event not relevant to current session, skipping (not marking as processed)');
+          return;
+        }
+
+        // Check if event was already processed (only for relevant events)
+        if (isEventProcessed(eventKey)) {
+          console.log('Event already processed, skipping', eventKey);
+          return;
+        }
+
+        // Mark as processed ONLY after we've confirmed it's relevant and not already processed
+        markEventAsProcessed(eventKey);
+        console.log('Processing webhook event', eventKey);
+
+        // Handle account link events
+        if (
+          webhookPayload.event === 'User.Account.Link.Started' ||
+          webhookPayload.event === 'User.Account.Link.Succeeded' ||
+          webhookPayload.event === 'User.Account.Link.Completed' ||
+          webhookPayload.event === 'User.Account.Link.Canceled' ||
+          webhookPayload.event === 'User.Account.Link.Removed' ||
+          webhookPayload.event === 'User.Account.Link.Failed'
+        ) {
+          let status: AccountLinkStatus = ACCOUNT_LINK_STATUS.Idle;
+          let tone: 'success' | 'warning' | 'info' = 'info';
+
+          if (
+            webhookPayload.event === 'User.Account.Link.Succeeded' ||
+            webhookPayload.event === 'User.Account.Link.Completed'
+          ) {
+            status = ACCOUNT_LINK_STATUS.Linked;
+            tone = 'success';
+          } else if (
+            webhookPayload.event === 'User.Account.Link.Canceled' ||
+            webhookPayload.event === 'User.Account.Link.Removed' ||
+            webhookPayload.event === 'User.Account.Link.Failed'
+          ) {
+            status = ACCOUNT_LINK_STATUS.Canceled;
+            tone = 'warning';
+          } else if (webhookPayload.event === 'User.Account.Link.Started') {
+            status = ACCOUNT_LINK_STATUS.Started;
+            tone = 'info';
+          }
+
+          updateAccountLinkStatus(status);
+          
+          // Update session object with new state
+          if (currentSession) {
+            const updatedSession: DemoSessionDto = {
+              ...currentSession,
+              accountLinkStatus: status,
+              // Update linkSessionKey: set it for Started events, clear it for Canceled events
+              linkSessionKey: status === ACCOUNT_LINK_STATUS.Canceled 
+                ? undefined 
+                : (sessionKey || currentSession.linkSessionKey),
+              // Update linkedUserRef if we received one, or clear it on cancel
+              linkedUserRef: status === ACCOUNT_LINK_STATUS.Canceled
+                ? undefined
+                : (userRef !== undefined ? userRef : currentSession.linkedUserRef),
+            };
+            setSession(updatedSession, true);
+            // Update the ref so subsequent events can match
+            sessionRef.current = updatedSession;
+          }
+          
+          appendEvent({
+            summary: `Oncade webhook • ${webhookPayload.event} • ${status}`,
+            timestamp: webhookPayload.timestamp || new Date().toISOString(),
+            tone,
+          });
+          return;
+        }
+
+        // Handle subscription events
+        if (
+          webhookPayload.event === 'Purchases.Subscriptions.Started' ||
+          webhookPayload.event === 'Purchases.Subscriptions.Completed' ||
+          webhookPayload.event === 'Purchases.Subscriptions.Canceled' ||
+          webhookPayload.event === 'Purchases.Subscriptions.Failed'
+        ) {
+          let status: SubscriptionStatus = SUBSCRIPTION_STATUS.Inactive;
+          let tone: 'success' | 'warning' | 'info' = 'info';
+
+          if (webhookPayload.event === 'Purchases.Subscriptions.Completed') {
+            status = SUBSCRIPTION_STATUS.Active;
+            tone = 'success';
+            if (webhookPayload.timestamp) {
+              updateActivatedAt(webhookPayload.timestamp);
+            }
+          } else if (webhookPayload.event === 'Purchases.Subscriptions.Canceled') {
+            status = SUBSCRIPTION_STATUS.Canceled;
+            tone = 'warning';
+          } else if (webhookPayload.event === 'Purchases.Subscriptions.Started') {
+            status = SUBSCRIPTION_STATUS.Pending;
+            tone = 'info';
+          }
+
+          updateSubscriptionStatus(status);
+          
+          // Update session object with new state
+          if (currentSession) {
+            const updatedSession: DemoSessionDto = {
+              ...currentSession,
+              subscriptionStatus: status,
+              subscriptionActivatedAt: status === SUBSCRIPTION_STATUS.Active && webhookPayload.timestamp
+                ? webhookPayload.timestamp
+                : currentSession.subscriptionActivatedAt,
+              // Update linkedUserRef if provided in webhook (for subscription events)
+              linkedUserRef: userRef || currentSession.linkedUserRef,
+            };
+            setSession(updatedSession, true);
+            // Update the ref so subsequent events can match
+            sessionRef.current = updatedSession;
+          }
+          
+          appendEvent({
+            summary: `Oncade webhook • ${webhookPayload.event} • ${status}`,
+            timestamp: webhookPayload.timestamp || new Date().toISOString(),
+            tone,
+          });
+          return;
+        }
+
+        // Handle other events as generic webhook notifications
+        appendEvent({
+          summary: `Oncade webhook • ${webhookPayload.event}`,
+          timestamp: webhookPayload.timestamp || new Date().toISOString(),
+          tone: 'info',
+        });
         return;
       }
 

@@ -79,9 +79,15 @@ function LoginModalContent() {
         }
 
         const sessionHeader = response.headers?.get(SESSION_HEADER);
+        // Create a fresh session object, ignoring any server state
+        // This ensures we start with a clean session in localStorage
+        // The server might return old state from in-memory storage, but we ignore it
         const sessionData: DemoSessionDto = {
-          ...response.data,
           id: sessionHeader ?? response.data.id,
+          createdAt: new Date().toISOString(),
+          email: email.trim().toLowerCase(),
+          accountLinkStatus: 'idle',
+          subscriptionStatus: 'inactive',
         };
 
         setSession(sessionData, true);

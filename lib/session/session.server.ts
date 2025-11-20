@@ -12,21 +12,12 @@ import {
   SESSION_STATE_HEADER,
   ONCADE_API_VERSION_HEADER_VALUE,
 } from '@/lib/constants';
-import { emitDemoEvent } from '@/lib/events/eventBus.server';
-import { DEMO_EVENT_TYPE } from '@/lib/events/eventBus.constants';
 import { getOncadeIntegrationConfig } from '@/lib/env/config.server';
 import { SUBSCRIPTION_STATUS, type SubscriptionStatus } from '@/lib/subscription/subscription.types';
 import type { DemoSessionDto, DemoSessionId, DemoSessionRecord } from '@/lib/session/session.types';
 
 export const SESSION_ERROR_MISSING_IDENTIFIER = 'Missing session identifier' as const;
 export const SESSION_ERROR_UNKNOWN_IDENTIFIER = 'Unknown session identifier' as const;
-
-interface SessionStoreInternal {
-  readonly records: Map<DemoSessionId, DemoSessionRecord>;
-  readonly linkToSession: Map<string, DemoSessionId>;
-  readonly emailToSession: Map<string, DemoSessionId>;
-  readonly userRefToSession: Map<string, DemoSessionId>;
-}
 
 function normalizeUserRef(value: unknown): string | undefined {
   if (typeof value !== 'string') {
@@ -46,31 +37,9 @@ function normalizeEmail(value: unknown): string | undefined {
 
 const SESSION_ID_SALT = process.env.DEMO_SESSION_ID_SALT ?? 'subscription.demo.session';
 
-function deriveSessionId(email: string): DemoSessionId {
+export function deriveSessionId(email: string): DemoSessionId {
   return crypto.createHash('sha1').update(`${SESSION_ID_SALT}:${email}`).digest('hex');
 }
-
-const GLOBAL_KEY = Symbol.for('subscription.demo.sessionStore');
-
-type GlobalWithSessionStore = typeof globalThis & {
-  [GLOBAL_KEY]?: SessionStoreInternal;
-};
-
-function createStore(): SessionStoreInternal {
-  return {
-    records: new Map(),
-    linkToSession: new Map(),
-    emailToSession: new Map(),
-    userRefToSession: new Map(),
-  };
-}
-
-const globalWithStore = globalThis as GlobalWithSessionStore;
-if (!globalWithStore[GLOBAL_KEY]) {
-  globalWithStore[GLOBAL_KEY] = createStore();
-}
-
-const store = globalWithStore[GLOBAL_KEY]!;
 
 function toDto(record: DemoSessionRecord): DemoSessionDto {
   return {
@@ -84,66 +53,7 @@ function toDto(record: DemoSessionRecord): DemoSessionDto {
     linkExpiresAt: record.linkExpiresAt?.toISOString(),
     subscriptionActivatedAt: record.subscriptionActivatedAt?.toISOString(),
     lastWebhookAt: record.lastWebhookAt?.toISOString(),
-  };
-}
-
-interface PersistOptions {
-  readonly previousEmail?: string;
-  readonly previousUserRef?: string;
-}
-
-function persist(record: DemoSessionRecord, options: PersistOptions = {}): DemoSessionRecord {
-  const previous = store.records.get(record.id);
-  if (previous) {
-    const trackedPreviousEmail = options.previousEmail ?? previous.email;
-    const previousEmail = normalizeEmail(trackedPreviousEmail);
-    const nextEmail = normalizeEmail(record.email);
-    if (previousEmail && previousEmail !== nextEmail) {
-      store.emailToSession.delete(previousEmail);
-    }
-    const trackedPreviousUserRef = options.previousUserRef ?? previous.linkedUserRef;
-    const previousUserRef = normalizeUserRef(trackedPreviousUserRef);
-    const nextUserRef = normalizeUserRef(record.linkedUserRef);
-    if (previousUserRef && previousUserRef !== nextUserRef) {
-      store.userRefToSession.delete(previousUserRef);
-    }
   }
-  store.records.set(record.id, record);
-  if (record.linkSessionKey) {
-    store.linkToSession.set(record.linkSessionKey, record.id);
-  }
-  const normalizedEmail = normalizeEmail(record.email);
-  if (normalizedEmail) {
-    store.emailToSession.set(normalizedEmail, record.id);
-  }
-  const normalizedUserRef = normalizeUserRef(record.linkedUserRef);
-  if (normalizedUserRef) {
-    store.userRefToSession.set(normalizedUserRef, record.id);
-  }
-  return record;
-}
-
-function ensureRecordForEmail(email: string): { record: DemoSessionRecord; created: boolean } {
-  const normalizedEmail = normalizeEmail(email);
-  if (!normalizedEmail) {
-    throw new Error('Invalid email provided for session record.');
-  }
-  const sessionId = deriveSessionId(normalizedEmail);
-  const existing = store.records.get(sessionId);
-  if (existing) {
-    if (existing.email !== normalizedEmail) {
-      existing.email = normalizedEmail;
-    }
-    return { record: existing, created: false };
-  }
-  const record: DemoSessionRecord = {
-    id: sessionId,
-    createdAt: new Date(),
-    email: normalizedEmail,
-    accountLinkStatus: ACCOUNT_LINK_STATUS.Idle,
-    subscriptionStatus: SUBSCRIPTION_STATUS.Inactive,
-  };
-  return { record, created: true };
 }
 
 const TRAILING_SLASHES = /\/+$/;
@@ -246,7 +156,7 @@ function parseSessionStateHeader(value: string | null): DemoSessionDto | undefin
 }
 
 function rehydrateSessionFromDto(dto: DemoSessionDto): DemoSessionRecord {
-  const record: DemoSessionRecord = {
+  return {
     id: dto.id,
     createdAt: dto.createdAt ? new Date(dto.createdAt) : new Date(),
     email: dto.email,
@@ -258,221 +168,52 @@ function rehydrateSessionFromDto(dto: DemoSessionDto): DemoSessionRecord {
     subscriptionActivatedAt: dto.subscriptionActivatedAt ? new Date(dto.subscriptionActivatedAt) : undefined,
     lastWebhookAt: dto.lastWebhookAt ? new Date(dto.lastWebhookAt) : undefined,
   };
-  return persist(record);
 }
 
+// Create a fresh session DTO (no memory storage)
 export function createDemoSession(email: string): DemoSessionDto {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) {
     throw new Error('Email is required to create demo session.');
   }
-  const { record } = ensureRecordForEmail(normalizedEmail);
-  record.email = normalizedEmail;
-  persist(record);
-  emitSessionEvent(record);
-  return toDto(record);
+  const sessionId = deriveSessionId(normalizedEmail);
+  return {
+    id: sessionId,
+    createdAt: new Date().toISOString(),
+    email: normalizedEmail,
+    accountLinkStatus: ACCOUNT_LINK_STATUS.Idle,
+    subscriptionStatus: SUBSCRIPTION_STATUS.Inactive,
+  };
 }
 
-function emitSessionEvent(record: DemoSessionRecord): void {
-  emitDemoEvent({
-    type: DEMO_EVENT_TYPE.SessionUpdated,
-    payload: toDto(record),
-  });
-}
-
-export function getSessionRecord(id: DemoSessionId): DemoSessionRecord | undefined {
-  return store.records.get(id);
-}
-
-export function getSessionDto(id: DemoSessionId): DemoSessionDto | undefined {
-  const record = getSessionRecord(id);
-  return record ? toDto(record) : undefined;
-}
-
-export function setAccountLinkStatus(
-  sessionId: DemoSessionId,
-  status: AccountLinkStatus,
-  options: { sessionKey?: string; expiresAt?: Date; preserveMapping?: boolean; userRef?: string | null } = {},
-): DemoSessionDto {
-  const record = getSessionRecord(sessionId);
-  if (!record) {
-    throw new Error(`Session ${sessionId} not found`);
-  }
-  const previousUserRef = record.linkedUserRef;
-
-  record.accountLinkStatus = status;
-  if (options.sessionKey) {
-    record.linkSessionKey = options.sessionKey;
-    store.linkToSession.set(options.sessionKey, sessionId);
-  }
-  if (options.expiresAt) {
-    record.linkExpiresAt = options.expiresAt;
-  }
-  if (status !== ACCOUNT_LINK_STATUS.Started) {
-    const previousKey = record.linkSessionKey;
-    if (previousKey && !options.preserveMapping) {
-      store.linkToSession.delete(previousKey);
-    }
-    if (!options.sessionKey && !options.preserveMapping) {
-      record.linkSessionKey = undefined;
-    }
-    record.linkExpiresAt = undefined;
-  }
-
-  if (options.userRef !== undefined) {
-    const normalized = options.userRef === null ? undefined : normalizeUserRef(options.userRef);
-    record.linkedUserRef = normalized;
-  } else if (status === ACCOUNT_LINK_STATUS.Canceled) {
-    record.linkedUserRef = undefined;
-  }
-
-  if (status === ACCOUNT_LINK_STATUS.Linked) {
-    record.subscriptionStatus =
-      record.subscriptionStatus === SUBSCRIPTION_STATUS.Active
-        ? SUBSCRIPTION_STATUS.Active
-        : SUBSCRIPTION_STATUS.Inactive;
-  }
-
-  persist(record, { previousUserRef });
-  emitSessionEvent(record);
-  return toDto(record);
-}
-
-export function setSubscriptionStatus(
-  sessionId: DemoSessionId,
-  status: SubscriptionStatus,
-  options: { occurredAt?: Date } = {},
-): DemoSessionDto {
-  const record = getSessionRecord(sessionId);
-  if (!record) {
-    throw new Error(`Session ${sessionId} not found`);
-  }
-
-  record.subscriptionStatus = status;
-  if (status === SUBSCRIPTION_STATUS.Active) {
-    record.subscriptionActivatedAt = options.occurredAt ?? new Date();
-  }
-  persist(record);
-  emitSessionEvent(record);
-  return toDto(record);
-}
-
-export function mapLinkSessionToSessionId(linkSessionKey: string): DemoSessionId | undefined {
-  return store.linkToSession.get(linkSessionKey);
-}
-
-export function resolveSessionIdByEmail(email: string): DemoSessionId | undefined {
-  const normalized = normalizeEmail(email);
-  if (!normalized) {
-    return undefined;
-  }
-  const existing = store.emailToSession.get(normalized);
-  if (existing) {
-    return existing;
-  }
-  const { record } = ensureRecordForEmail(normalized);
-  persist(record, { previousEmail: normalized });
-  return record.id;
-}
-
-export function resolveSessionIdByUserRef(userRef: string): DemoSessionId | undefined {
-  const normalized = normalizeUserRef(userRef);
-  if (!normalized) {
-    return undefined;
-  }
-  return store.userRefToSession.get(normalized);
-}
-
-export async function resolveSessionIdFromLinkWithLookup(sessionKey: string): Promise<DemoSessionId | undefined> {
-  const existing = mapLinkSessionToSessionId(sessionKey);
-  if (existing) {
-    return existing;
-  }
-  const record = await rehydrateSessionFromLink(sessionKey);
-  return record?.id;
-}
-
-export async function resolveSessionIdByUserRefWithLookup(userRef: string): Promise<DemoSessionId | undefined> {
-  const existing = resolveSessionIdByUserRef(userRef);
-  if (existing) {
-    return existing;
-  }
-  const record = await rehydrateSessionFromUserRef(userRef);
-  return record?.id;
-}
-
-export function touchWebhook(sessionId: DemoSessionId): void {
-  const record = getSessionRecord(sessionId);
-  if (!record) {
-    throw new Error(`Session ${sessionId} not found`);
-  }
-  record.lastWebhookAt = new Date();
-  persist(record);
-  emitSessionEvent(record);
-}
-
-async function rehydrateSessionFromLink(sessionKey: string): Promise<DemoSessionRecord | undefined> {
-  const details = await fetchLinkSessionDetails(sessionKey);
-  const email = details?.email ? normalizeEmail(details.email) : undefined;
-  if (!email) {
-    return undefined;
-  }
-  const { record } = ensureRecordForEmail(email);
-  const previousUserRef = record.linkedUserRef;
-  record.linkSessionKey = sessionKey;
-  if (typeof details?.userRef === 'string') {
-    record.linkedUserRef = details.userRef;
-    record.accountLinkStatus = ACCOUNT_LINK_STATUS.Linked;
-  } else if (record.accountLinkStatus === ACCOUNT_LINK_STATUS.Idle) {
-    record.accountLinkStatus = ACCOUNT_LINK_STATUS.Started;
-  }
-  persist(record, { previousEmail: email, previousUserRef });
-  emitSessionEvent(record);
-  return record;
-}
-
-async function rehydrateSessionFromUserRef(userRef: string): Promise<DemoSessionRecord | undefined> {
-  const email = await fetchUserEmailByRef(userRef);
-  if (!email) {
-    return undefined;
-  }
-  const { record } = ensureRecordForEmail(email);
-  const previousUserRef = record.linkedUserRef;
-  record.linkedUserRef = userRef;
-  persist(record, { previousEmail: email, previousUserRef });
-  emitSessionEvent(record);
-  return record;
-}
-
-function restoreSessionFromRequest(request: NextRequest, sessionId: DemoSessionId): DemoSessionRecord | undefined {
-  const encodedPayload = request.headers.get(SESSION_STATE_HEADER);
-  if (!encodedPayload) {
-    return undefined;
-  }
-  const dto = parseSessionStateHeader(encodedPayload);
-  if (!dto || dto.id !== sessionId) {
-    return undefined;
-  }
-  return rehydrateSessionFromDto(dto);
-}
-
+// Get session from request headers only (no memory lookup)
 export function requireSessionFromRequest(request: NextRequest): DemoSessionRecord {
   const sessionId = request.headers.get(SESSION_HEADER);
   if (!sessionId) {
     throw new Error(SESSION_ERROR_MISSING_IDENTIFIER);
   }
 
-  const record = getSessionRecord(sessionId);
-  if (record) {
-    return record;
+  const encodedPayload = request.headers.get(SESSION_STATE_HEADER);
+  if (!encodedPayload) {
+    throw new Error(SESSION_ERROR_UNKNOWN_IDENTIFIER);
   }
 
-  const restored = restoreSessionFromRequest(request, sessionId);
-  if (restored) {
-    return restored;
+  const dto = parseSessionStateHeader(encodedPayload);
+  if (!dto || dto.id !== sessionId) {
+    throw new Error(SESSION_ERROR_UNKNOWN_IDENTIFIER);
   }
 
-  throw new Error(SESSION_ERROR_UNKNOWN_IDENTIFIER);
+  return rehydrateSessionFromDto(dto);
+}
+
+// Get session DTO from request (for API routes that need DTO format)
+export function getSessionDtoFromRequest(request: NextRequest): DemoSessionDto | undefined {
+  try {
+    const record = requireSessionFromRequest(request);
+    return toDto(record);
+  } catch {
+    return undefined;
+  }
 }
 
 export function resolveSessionErrorStatus(error: Error, fallbackStatus = 400): number {
@@ -483,4 +224,56 @@ export function resolveSessionErrorStatus(error: Error, fallbackStatus = 400): n
     return 404;
   }
   return fallbackStatus;
+}
+
+// Helper functions for webhook handlers - these resolve session ID from external data
+// They don't store anything, just help identify which session a webhook belongs to
+
+export async function resolveSessionIdFromLink(sessionKey: string): Promise<DemoSessionId | undefined> {
+  const details = await fetchLinkSessionDetails(sessionKey);
+  const email = details?.email ? normalizeEmail(details.email) : undefined;
+  if (!email) {
+    return undefined;
+  }
+  return deriveSessionId(email);
+}
+
+export async function resolveSessionIdByUserRef(userRef: string): Promise<DemoSessionId | undefined> {
+  const email = await fetchUserEmailByRef(userRef);
+  if (!email) {
+    return undefined;
+  }
+  return deriveSessionId(email);
+}
+
+export function resolveSessionIdByEmail(email: string): DemoSessionId | undefined {
+  const normalized = normalizeEmail(email);
+  if (!normalized) {
+    return undefined;
+  }
+  return deriveSessionId(normalized);
+}
+
+// Alias for backwards compatibility - these functions are no longer used but kept for compatibility
+export async function resolveSessionIdFromLinkWithLookup(sessionKey: string): Promise<DemoSessionId | undefined> {
+  return resolveSessionIdFromLink(sessionKey);
+}
+
+export async function resolveSessionIdByUserRefWithLookup(userRef: string): Promise<DemoSessionId | undefined> {
+  return resolveSessionIdByUserRef(userRef);
+}
+
+// Legacy functions kept for compatibility but they don't use memory
+// These are deprecated and should be removed once all code is updated
+
+/** @deprecated Use getSessionDtoFromRequest instead - sessions are now client-side only */
+export function getSessionDto(id: DemoSessionId): DemoSessionDto | undefined {
+  // Always return undefined - sessions are client-side only
+  return undefined;
+}
+
+/** @deprecated Use requireSessionFromRequest instead - sessions are now client-side only */
+export function getSessionRecord(id: DemoSessionId): DemoSessionRecord | undefined {
+  // Always return undefined - sessions are now client-side only
+  return undefined;
 }

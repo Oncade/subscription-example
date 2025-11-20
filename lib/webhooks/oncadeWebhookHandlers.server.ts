@@ -5,12 +5,10 @@ import { NextResponse } from 'next/server';
 import { cancelAccountLink, completeAccountLink, emitAccountLinkEvent } from '@/lib/accountLink/accountLink.server';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
 import {
-  getSessionRecord,
   resolveSessionIdByEmail,
   resolveSessionIdByUserRef,
   resolveSessionIdFromLinkWithLookup,
   resolveSessionIdByUserRefWithLookup,
-  setAccountLinkStatus,
 } from '@/lib/session/session.server';
 import { activateSubscription, cancelSubscription, markSubscriptionPending } from '@/lib/subscription/subscription.server';
 
@@ -61,18 +59,8 @@ export async function handleAccountLinkWebhook(payload: OncadeWebhookEnvelope): 
       cancelAccountLink(sessionId, sessionKey, 'oncade', userRef, payload.timestamp, payload.event);
       break;
     case ONCADE_ACCOUNT_LINK_WEBHOOK_EVENTS.Started:
-      setAccountLinkStatus(sessionId, ACCOUNT_LINK_STATUS.Started, {
-        sessionKey,
-        preserveMapping: true,
-      });
-      emitAccountLinkEvent({
-        sessionId,
-        sessionKey,
-        status: ACCOUNT_LINK_STATUS.Started,
-        provider: 'oncade',
-        triggeredAt: payload.timestamp,
-        topic: payload.event,
-      });
+      // Session state is managed client-side, no server-side storage
+      // Events are sent directly to clients via webhookOncade.ts
       break;
     default:
       console.warn('Received unsupported account link webhook event', payload.event);
@@ -115,25 +103,9 @@ export async function handleSubscriptionWebhook(
     );
   }
 
-  const record = getSessionRecord(sessionId);
-  if (!record) {
-    return NextResponse.json({ success: false, error: 'Session for webhook not found.' }, { status: HTTP_STATUS_ACCEPTED });
-  }
-
-  switch (transition) {
-    case 'pending':
-      await markSubscriptionPending(sessionId, 'oncade', event);
-      break;
-    case 'active':
-      await activateSubscription(sessionId, 'oncade', event);
-      break;
-    case 'canceled':
-      await cancelSubscription(sessionId, 'oncade', event);
-      break;
-    default:
-      console.warn('Unhandled subscription transition for event', event);
-      break;
-  }
+  // Session state is managed client-side, no server-side storage
+  // Events are sent directly to clients via webhookOncade.ts
+  // These handlers are kept for backwards compatibility but are no-ops
 
   return NextResponse.json({ success: true }, { status: HTTP_STATUS_OK });
 }

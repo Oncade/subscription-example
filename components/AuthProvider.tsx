@@ -94,6 +94,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return;
     }
 
+    // Use localStorage as source of truth - only use server to create new sessions
+    // Don't fetch from server as it has in-memory state we don't want
+    if (stored.dto) {
+      setSessionState(stored.dto);
+      return;
+    }
+
+    // If we only have an ID but no DTO, try to fetch (for backwards compatibility)
     const next = await fetchSession(stored.id, stored.dto);
     setSessionState(next);
     if (next) {

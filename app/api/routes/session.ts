@@ -5,8 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SESSION_HEADER } from '@/lib/constants';
 import {
   createDemoSession,
-  getSessionDto,
-  requireSessionFromRequest,
+  getSessionDtoFromRequest,
   SESSION_ERROR_MISSING_IDENTIFIER,
   SESSION_ERROR_UNKNOWN_IDENTIFIER,
 } from '@/lib/session/session.server';
@@ -43,8 +42,7 @@ export async function handleSessionPost(request: NextRequest): Promise<NextRespo
 
 export async function handleSessionGet(request: NextRequest): Promise<NextResponse> {
   try {
-    const record = requireSessionFromRequest(request);
-    const dto = getSessionDto(record.id);
+    const dto = getSessionDtoFromRequest(request);
     if (!dto) {
       return sessionInvalidResponse('Session not found', 404);
     }

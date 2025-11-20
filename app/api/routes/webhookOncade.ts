@@ -12,12 +12,8 @@ import {
   resolveWebhookSecret,
   verifyWebhookSignature,
 } from '@/lib/webhooks/webhookVerification.server';
-import { emitWebhookSignatureFailure } from '@/lib/webhooks/webhookEvents.server';
-import {
-  isOncadeAccountLinkEvent,
-  mapOncadeSubscriptionEvent,
-} from '@/lib/webhooks/oncadeWebhook.constants';
-import { handleAccountLinkWebhook, handleSubscriptionWebhook } from '@/lib/webhooks/oncadeWebhookHandlers.server';
+import { pushEventToClients } from '@/lib/events/eventStream.server';
+import { DEMO_EVENT_TYPE } from '@/lib/events/eventBus.constants';
 import type { OncadeWebhookEnvelope } from '@/lib/webhooks/oncadeWebhook.types';
 
 const HTTP_STATUS_OK = 200;
@@ -47,7 +43,6 @@ export async function handleOncadeWebhookPost(request: NextRequest): Promise<Nex
     const legacyHeader = WEBHOOK_SIGNATURE_HEADER;
     const headerUsed = request.headers.has(legacyHeader) ? legacyHeader : ONCADE_WEBHOOK_SIGNATURE_HEADER;
     console.warn(`Rejected webhook due to invalid signature (${headerUsed}).`);
-    emitWebhookSignatureFailure(headerUsed);
     return NextResponse.json(
       { success: false, error: 'Invalid webhook signature.' },
       { status: HTTP_STATUS_UNAUTHORIZED },
@@ -70,16 +65,12 @@ export async function handleOncadeWebhookPost(request: NextRequest): Promise<Nex
       { status: HTTP_STATUS_BAD_REQUEST },
     );
   }
+  console.log('payload', payload);
+  // Send raw webhook event directly to all connected clients
+  pushEventToClients({
+    type: DEMO_EVENT_TYPE.RawWebhookEvent,
+    payload,
+  });
 
-  if (isOncadeAccountLinkEvent(payload.event)) {
-    return handleAccountLinkWebhook(payload);
-  }
-
-  const subscriptionTransition = mapOncadeSubscriptionEvent(payload.event);
-  if (subscriptionTransition) {
-    return handleSubscriptionWebhook(payload.event, payload, subscriptionTransition);
-  }
-
-  console.info('Received unsupported Oncade webhook event; skipping', payload.event);
   return NextResponse.json({ success: true }, { status: HTTP_STATUS_OK });
 }
