@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 import { handleOncadeWebhookPost } from '@/app/api/routes/webhookOncade';
