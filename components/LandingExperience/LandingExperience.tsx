@@ -57,6 +57,7 @@ function LandingExperienceInner({
 }: LandingExperienceInnerProps) {
   const api = useApi();
   const { openPopup } = usePopup();
+  const sessionId = session?.id ?? null;
   const {
     accountLinkStatus,
     linkExpiresAt,
@@ -76,7 +77,7 @@ function LandingExperienceInner({
   const planAvailable = Boolean(plan);
 
   const refreshStatuses = useCallback(async () => {
-    if (!session) {
+    if (!sessionId) {
       return;
     }
 
@@ -101,10 +102,11 @@ function LandingExperienceInner({
       setSubscriptionStatus(subscriptionResponse.data.status);
       setActivatedAt(subscriptionResponse.data.activatedAt);
     }
-  }, [api, session, setAccountLinkStatus, setActivatedAt, setLinkExpiresAt, setSubscriptionStatus]);
+
+  }, [api, sessionId, setAccountLinkStatus, setActivatedAt, setLinkExpiresAt, setSubscriptionStatus]);
 
   useEffect(() => {
-    if (!session) {
+    if (!sessionId) {
       return;
     }
 
@@ -113,7 +115,7 @@ function LandingExperienceInner({
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [session, refreshStatuses]);
+  }, [sessionId, refreshStatuses]);
 
   const handleLinkAccount = useCallback(async () => {
     setBusy(true);
