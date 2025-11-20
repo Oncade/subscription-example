@@ -129,8 +129,6 @@ describe('GET /api/account/link/status', () => {
       preserveMapping: true,
     });
 
-    const setStatusSpy = vi.spyOn(sessionStore, 'setAccountLinkStatus');
-
     const response = await handleAccountLinkStatusGet(buildRequest(session.id));
     const payload = await response.json();
 
@@ -138,6 +136,8 @@ describe('GET /api/account/link/status', () => {
     expect(payload.data.accountLinkStatus).toBe(ACCOUNT_LINK_STATUS.Linked);
     expect(payload.data.accountLinkStatus).toBe(ACCOUNT_LINK_STATUS.Linked);
     expect(payload.data.linkedUserRef).toBe('user_ref_123');
-    expect(setStatusSpy).toHaveBeenCalled();
+
+    const updated = sessionStore.getSessionDto(session.id);
+    expect(updated?.linkedUserRef).toBe('user_ref_123');
   });
 });

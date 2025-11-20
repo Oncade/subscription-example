@@ -4,9 +4,17 @@ import crypto from 'crypto';
 import { NextRequest } from 'next/server';
 
 import { ACCOUNT_LINK_STATUS, type AccountLinkStatus } from '@/lib/accountLink/accountLink.types';
-import { SESSION_HEADER, SESSION_STATE_HEADER } from '@/lib/constants';
+import {
+  HEADER_API_VERSION,
+  HEADER_AUTHORIZATION,
+  HEADER_GAME_ID,
+  SESSION_HEADER,
+  SESSION_STATE_HEADER,
+  ONCADE_API_VERSION_HEADER_VALUE,
+} from '@/lib/constants';
 import { emitDemoEvent } from '@/lib/events/eventBus.server';
 import { DEMO_EVENT_TYPE } from '@/lib/events/eventBus.constants';
+import { getOncadeIntegrationConfig } from '@/lib/env/config.server';
 import { SUBSCRIPTION_STATUS, type SubscriptionStatus } from '@/lib/subscription/subscription.types';
 import type { DemoSessionDto, DemoSessionId, DemoSessionRecord } from '@/lib/session/session.types';
 
@@ -34,6 +42,12 @@ function normalizeEmail(value: unknown): string | undefined {
   }
   const trimmed = value.trim().toLowerCase();
   return trimmed ? trimmed : undefined;
+}
+
+const SESSION_ID_SALT = process.env.DEMO_SESSION_ID_SALT ?? 'subscription.demo.session';
+
+function deriveSessionId(email: string): DemoSessionId {
+  return crypto.createHash('sha1').update(`${SESSION_ID_SALT}:${email}`).digest('hex');
 }
 
 const GLOBAL_KEY = Symbol.for('subscription.demo.sessionStore');
@@ -109,6 +123,97 @@ function persist(record: DemoSessionRecord, options: PersistOptions = {}): DemoS
   return record;
 }
 
+function ensureRecordForEmail(email: string): { record: DemoSessionRecord; created: boolean } {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    throw new Error('Invalid email provided for session record.');
+  }
+  const sessionId = deriveSessionId(normalizedEmail);
+  const existing = store.records.get(sessionId);
+  if (existing) {
+    if (existing.email !== normalizedEmail) {
+      existing.email = normalizedEmail;
+    }
+    return { record: existing, created: false };
+  }
+  const record: DemoSessionRecord = {
+    id: sessionId,
+    createdAt: new Date(),
+    email: normalizedEmail,
+    accountLinkStatus: ACCOUNT_LINK_STATUS.Idle,
+    subscriptionStatus: SUBSCRIPTION_STATUS.Inactive,
+  };
+  return { record, created: true };
+}
+
+const TRAILING_SLASHES = /\/+$/;
+
+function sanitizeBaseUrl(value: string): string {
+  return value.replace(TRAILING_SLASHES, '');
+}
+
+async function fetchLinkSessionDetails(
+  sessionKey: string,
+): Promise<{ email?: string; userRef?: string | null } | undefined> {
+  const { apiBaseUrl } = getOncadeIntegrationConfig();
+  const baseUrl = sanitizeBaseUrl(apiBaseUrl);
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/users/link/details?session=${encodeURIComponent(sessionKey)}`);
+    if (!response.ok) {
+      return undefined;
+    }
+    const payload = (await response.json().catch(() => undefined)) as
+      | { prefilledEmail?: string; userRef?: string | null }
+      | undefined;
+    if (!payload) {
+      return undefined;
+    }
+    return {
+      email: typeof payload.prefilledEmail === 'string' ? payload.prefilledEmail : undefined,
+      userRef: typeof payload.userRef === 'string' || payload.userRef === null ? payload.userRef : undefined,
+    };
+  } catch (error) {
+    console.warn('Failed to fetch link session details', { sessionKey, error });
+    return undefined;
+  }
+}
+
+function buildServerHeaders(serverApiKey: string, gameId: string): Record<string, string> {
+  return {
+    [HEADER_AUTHORIZATION]: `Bearer ${serverApiKey}`,
+    [HEADER_API_VERSION]: ONCADE_API_VERSION_HEADER_VALUE,
+    [HEADER_GAME_ID]: gameId,
+    accept: 'application/json',
+  };
+}
+
+async function fetchUserEmailByRef(userRef: string): Promise<string | undefined> {
+  const { apiBaseUrl, serverApiKey, gameId } = getOncadeIntegrationConfig();
+  const baseUrl = sanitizeBaseUrl(apiBaseUrl);
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/users/${encodeURIComponent(userRef)}`, {
+      method: 'GET',
+      headers: buildServerHeaders(serverApiKey, gameId),
+    });
+    if (!response.ok) {
+      return undefined;
+    }
+    const payload = (await response.json().catch(() => undefined)) as
+      | { email?: string | null; userEmail?: string | null }
+      | undefined;
+    const candidate =
+      typeof payload?.email === 'string'
+        ? payload.email
+        : typeof payload?.userEmail === 'string'
+          ? payload.userEmail
+          : undefined;
+    return normalizeEmail(candidate);
+  } catch (error) {
+    console.warn('Failed to fetch user by reference', { userRef, error });
+    return undefined;
+  }
+}
+
 function parseSessionStateHeader(value: string | null): DemoSessionDto | undefined {
   if (!value) {
     return undefined;
@@ -157,16 +262,12 @@ function rehydrateSessionFromDto(dto: DemoSessionDto): DemoSessionRecord {
 }
 
 export function createDemoSession(email: string): DemoSessionDto {
-  const id = crypto.randomUUID();
-  const now = new Date();
-  const record: DemoSessionRecord = {
-    id,
-    createdAt: now,
-    email,
-    accountLinkStatus: ACCOUNT_LINK_STATUS.Idle,
-    subscriptionStatus: SUBSCRIPTION_STATUS.Inactive,
-  };
-
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    throw new Error('Email is required to create demo session.');
+  }
+  const { record } = ensureRecordForEmail(normalizedEmail);
+  record.email = normalizedEmail;
   persist(record);
   emitSessionEvent(record);
   return toDto(record);
@@ -265,7 +366,13 @@ export function resolveSessionIdByEmail(email: string): DemoSessionId | undefine
   if (!normalized) {
     return undefined;
   }
-  return store.emailToSession.get(normalized);
+  const existing = store.emailToSession.get(normalized);
+  if (existing) {
+    return existing;
+  }
+  const { record } = ensureRecordForEmail(normalized);
+  persist(record, { previousEmail: normalized });
+  return record.id;
 }
 
 export function resolveSessionIdByUserRef(userRef: string): DemoSessionId | undefined {
@@ -276,6 +383,24 @@ export function resolveSessionIdByUserRef(userRef: string): DemoSessionId | unde
   return store.userRefToSession.get(normalized);
 }
 
+export async function resolveSessionIdFromLinkWithLookup(sessionKey: string): Promise<DemoSessionId | undefined> {
+  const existing = mapLinkSessionToSessionId(sessionKey);
+  if (existing) {
+    return existing;
+  }
+  const record = await rehydrateSessionFromLink(sessionKey);
+  return record?.id;
+}
+
+export async function resolveSessionIdByUserRefWithLookup(userRef: string): Promise<DemoSessionId | undefined> {
+  const existing = resolveSessionIdByUserRef(userRef);
+  if (existing) {
+    return existing;
+  }
+  const record = await rehydrateSessionFromUserRef(userRef);
+  return record?.id;
+}
+
 export function touchWebhook(sessionId: DemoSessionId): void {
   const record = getSessionRecord(sessionId);
   if (!record) {
@@ -284,6 +409,39 @@ export function touchWebhook(sessionId: DemoSessionId): void {
   record.lastWebhookAt = new Date();
   persist(record);
   emitSessionEvent(record);
+}
+
+async function rehydrateSessionFromLink(sessionKey: string): Promise<DemoSessionRecord | undefined> {
+  const details = await fetchLinkSessionDetails(sessionKey);
+  const email = details?.email ? normalizeEmail(details.email) : undefined;
+  if (!email) {
+    return undefined;
+  }
+  const { record } = ensureRecordForEmail(email);
+  const previousUserRef = record.linkedUserRef;
+  record.linkSessionKey = sessionKey;
+  if (typeof details?.userRef === 'string') {
+    record.linkedUserRef = details.userRef;
+    record.accountLinkStatus = ACCOUNT_LINK_STATUS.Linked;
+  } else if (record.accountLinkStatus === ACCOUNT_LINK_STATUS.Idle) {
+    record.accountLinkStatus = ACCOUNT_LINK_STATUS.Started;
+  }
+  persist(record, { previousEmail: email, previousUserRef });
+  emitSessionEvent(record);
+  return record;
+}
+
+async function rehydrateSessionFromUserRef(userRef: string): Promise<DemoSessionRecord | undefined> {
+  const email = await fetchUserEmailByRef(userRef);
+  if (!email) {
+    return undefined;
+  }
+  const { record } = ensureRecordForEmail(email);
+  const previousUserRef = record.linkedUserRef;
+  record.linkedUserRef = userRef;
+  persist(record, { previousEmail: email, previousUserRef });
+  emitSessionEvent(record);
+  return record;
 }
 
 function restoreSessionFromRequest(request: NextRequest, sessionId: DemoSessionId): DemoSessionRecord | undefined {

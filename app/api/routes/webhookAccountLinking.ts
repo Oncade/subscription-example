@@ -3,13 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { ACCOUNT_LINK_STATUS, type AccountLinkStatus } from '@/lib/accountLink/accountLink.types';
-import {
-  cancelAccountLink,
-  completeAccountLink,
-  resolveSessionIdFromLink,
-  emitAccountLinkEvent,
-} from '@/lib/accountLink/accountLink.server';
-import { setAccountLinkStatus } from '@/lib/session/session.server';
+import { cancelAccountLink, completeAccountLink, emitAccountLinkEvent } from '@/lib/accountLink/accountLink.server';
+import { resolveSessionIdFromLinkWithLookup, setAccountLinkStatus } from '@/lib/session/session.server';
 import { WEBHOOK_SIGNATURE_HEADER } from '@/lib/constants';
 import { ONCADE_ACCOUNT_LINK_WEBHOOK_EVENTS as ACCOUNT_LINK_WEBHOOK_EVENTS } from '@/lib/webhooks/oncadeWebhook.constants';
 import { EVENT_LOG_TONE } from '@/lib/events/eventLog.types';
@@ -59,7 +54,7 @@ export async function handleWebhookAccountLinkingPost(request: NextRequest): Pro
     return NextResponse.json({ success: false, error: 'Missing session key in webhook payload.' }, { status: 400 });
   }
 
-  const sessionId = resolveSessionIdFromLink(sessionKey);
+  const sessionId = await resolveSessionIdFromLinkWithLookup(sessionKey);
   if (!sessionId) {
     return NextResponse.json({ success: false, error: 'Session for webhook not found.' }, { status: 202 });
   }

@@ -2,14 +2,16 @@ import 'server-only';
 
 import { NextResponse } from 'next/server';
 
-import {
-  resolveSessionIdFromLink,
-  cancelAccountLink,
-  completeAccountLink,
-  emitAccountLinkEvent,
-} from '@/lib/accountLink/accountLink.server';
+import { cancelAccountLink, completeAccountLink, emitAccountLinkEvent } from '@/lib/accountLink/accountLink.server';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
-import { setAccountLinkStatus, getSessionRecord, resolveSessionIdByEmail, resolveSessionIdByUserRef } from '@/lib/session/session.server';
+import {
+  getSessionRecord,
+  resolveSessionIdByEmail,
+  resolveSessionIdByUserRef,
+  resolveSessionIdFromLinkWithLookup,
+  resolveSessionIdByUserRefWithLookup,
+  setAccountLinkStatus,
+} from '@/lib/session/session.server';
 import { activateSubscription, cancelSubscription, markSubscriptionPending } from '@/lib/subscription/subscription.server';
 
 import {
@@ -28,7 +30,7 @@ const HTTP_STATUS_OK = 200;
 const HTTP_STATUS_ACCEPTED = 202;
 const HTTP_STATUS_BAD_REQUEST = 400;
 
-export function handleAccountLinkWebhook(payload: OncadeWebhookEnvelope): NextResponse {
+export async function handleAccountLinkWebhook(payload: OncadeWebhookEnvelope): Promise<NextResponse> {
   const sessionKey = extractSessionKey(payload.data);
   const userRef = extractUserRef(payload.data);
 
@@ -40,7 +42,7 @@ export function handleAccountLinkWebhook(payload: OncadeWebhookEnvelope): NextRe
     );
   }
 
-  const sessionId = resolveSessionIdFromLink(sessionKey);
+  const sessionId = await resolveSessionIdFromLinkWithLookup(sessionKey);
   if (!sessionId) {
     console.warn('account-link webhook session not found', { event: payload.event, sessionKey });
     return NextResponse.json(
@@ -96,10 +98,10 @@ export async function handleSubscriptionWebhook(
     );
   }
 
-  let sessionId = subscriptionSessionKey ? resolveSessionIdFromLink(subscriptionSessionKey) : undefined;
+  let sessionId = subscriptionSessionKey ? await resolveSessionIdFromLinkWithLookup(subscriptionSessionKey) : undefined;
 
   if (!sessionId && payloadUserRef) {
-    sessionId = resolveSessionIdByUserRef(payloadUserRef);
+    sessionId = await resolveSessionIdByUserRefWithLookup(payloadUserRef);
   }
 
   if (!sessionId && payloadEmail) {
