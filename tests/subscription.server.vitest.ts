@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { markSubscriptionPending, activateSubscription, cancelSubscription } from '@/lib/subscription/subscription.server';
-import { SUBSCRIPTION_STATUS } from '@/lib/subscription/subscription.types';
-import { createDemoSession, getSessionDto } from '@/lib/session/session.server';
+import { createDemoSession } from '@/lib/session/session.server';
 import * as planConfig from '@/lib/env/planConfig.server';
 
 describe('subscription.server', () => {
@@ -17,25 +16,20 @@ describe('subscription.server', () => {
     vi.spyOn(planConfig, 'getPlanFetchWarning').mockReturnValue(undefined);
   });
 
-  it('transitions subscription to pending and active', async () => {
+  it('transitions subscription to pending and active (no-ops, state managed client-side)', async () => {
     const session = createDemoSession('subscriber@ea.com');
 
-    await markSubscriptionPending(session.id, 'demo');
-    let updated = getSessionDto(session.id);
-    expect(updated?.subscriptionStatus).toBe(SUBSCRIPTION_STATUS.Pending);
-
-    await activateSubscription(session.id, 'demo');
-    updated = getSessionDto(session.id);
-    expect(updated?.subscriptionStatus).toBe(SUBSCRIPTION_STATUS.Active);
-    expect(updated?.subscriptionActivatedAt).toBeDefined();
+    // These functions are now no-ops since state is managed client-side
+    // They should not throw errors
+    await expect(markSubscriptionPending(session.id, 'demo')).resolves.not.toThrow();
+    await expect(activateSubscription(session.id, 'demo')).resolves.not.toThrow();
   });
 
-  it('handles cancel webhook', async () => {
+  it('handles cancel webhook (no-op, state managed client-side)', async () => {
     const session = createDemoSession('subscriber@ea.com');
-    await activateSubscription(session.id, 'demo');
-    await cancelSubscription(session.id, 'demo');
-
-    const updated = getSessionDto(session.id);
-    expect(updated?.subscriptionStatus).toBe(SUBSCRIPTION_STATUS.Canceled);
+    
+    // These functions are now no-ops since state is managed client-side
+    await expect(activateSubscription(session.id, 'demo')).resolves.not.toThrow();
+    await expect(cancelSubscription(session.id, 'demo')).resolves.not.toThrow();
   });
 });

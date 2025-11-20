@@ -8,7 +8,6 @@ import { DEMO_EVENT_TYPE } from '@/lib/events/eventBus.constants';
 import type { AccountLinkEventPayload, AccountLinkSessionDto, AccountLinkStatus } from '@/lib/accountLink/accountLink.types';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
 import { getOncadeIntegrationConfig } from '@/lib/env/config.server';
-import { deriveSessionId } from '@/lib/session/session.server';
 import type { DemoSessionId } from '@/lib/session/session.types';
 
 interface RemoteInitiateResponse {
@@ -86,9 +85,9 @@ export async function initiateAccountLinkSession(sessionId: DemoSessionId, email
   };
 }
 
-function resolveLinkUrl(urlFromApi: string | undefined, apiBaseUrl: string, sessionKey: string, requestOrigin: string): string {
+function resolveLinkUrl(urlFromApi: string | undefined, apiBaseUrl: string, sessionKey: string, requestOrigin: string | undefined): string {
   const trimmedApiBase = apiBaseUrl.replace(/\/$/, '');
-  const normalizedOrigin = requestOrigin.trim();
+  const normalizedOrigin = requestOrigin && typeof requestOrigin === 'string' ? requestOrigin.trim() : '';
   const trimmedOrigin = normalizedOrigin ? normalizedOrigin.replace(/\/$/, '') : '';
   const preferredBase = trimmedApiBase || trimmedOrigin;
   const fallbackBase = preferredBase || trimmedOrigin || trimmedApiBase;
@@ -116,29 +115,32 @@ function resolveLinkUrl(urlFromApi: string | undefined, apiBaseUrl: string, sess
 
 // These functions are no longer needed - webhooks are handled client-side
 // Keeping for backwards compatibility but they're no-ops
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function completeAccountLink(
-  sessionId: DemoSessionId,
-  sessionKey: string,
-  provider: 'demo' | 'oncade',
-  userRef?: string,
-  triggeredAt?: string,
-  topic?: string,
+  _sessionId: DemoSessionId,
+  _sessionKey: string,
+  _provider: 'demo' | 'oncade',
+  _userRef?: string,
+  _triggeredAt?: string,
+  _topic?: string,
 ): void {
   // No-op - webhooks are handled client-side
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function cancelAccountLink(
-  sessionId: DemoSessionId,
-  sessionKey: string,
-  provider: 'demo' | 'oncade',
-  userRef?: string,
-  triggeredAt?: string,
-  topic?: string,
+  _sessionId: DemoSessionId,
+  _sessionKey: string,
+  _provider: 'demo' | 'oncade',
+  _userRef?: string,
+  _triggeredAt?: string,
+  _topic?: string,
 ): void {
   // No-op - webhooks are handled client-side
 }
 
-export function resolveSessionIdFromLink(sessionKey: string): DemoSessionId | undefined {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function resolveSessionIdFromLink(_sessionKey: string): DemoSessionId | undefined {
   // No-op - sessions are client-side only
   return undefined;
 }

@@ -2,15 +2,12 @@ import 'server-only';
 
 import { NextResponse } from 'next/server';
 
-import { cancelAccountLink, completeAccountLink, emitAccountLinkEvent } from '@/lib/accountLink/accountLink.server';
-import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
+import { cancelAccountLink, completeAccountLink } from '@/lib/accountLink/accountLink.server';
 import {
   resolveSessionIdByEmail,
-  resolveSessionIdByUserRef,
   resolveSessionIdFromLinkWithLookup,
   resolveSessionIdByUserRefWithLookup,
 } from '@/lib/session/session.server';
-import { activateSubscription, cancelSubscription, markSubscriptionPending } from '@/lib/subscription/subscription.server';
 
 import {
   ONCADE_ACCOUNT_LINK_WEBHOOK_EVENTS,
@@ -70,10 +67,11 @@ export async function handleAccountLinkWebhook(payload: OncadeWebhookEnvelope): 
   return NextResponse.json({ success: true }, { status: HTTP_STATUS_OK });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function handleSubscriptionWebhook(
-  event: string,
+  _event: string,
   payload: OncadeWebhookEnvelope,
-  transition: OncadeSubscriptionTransition,
+  _transition: OncadeSubscriptionTransition,
 ): Promise<NextResponse> {
   const subscriptionSessionKey = extractSubscriptionSessionKey(payload.data);
   const payloadEmail = extractUserEmail(payload.data);

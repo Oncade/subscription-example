@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { handleSubscriptionSubscribePost } from '@/app/api/routes/subscriptionSubscribe';
-import { DEFAULT_ONCADE_API_BASE_URL, SESSION_HEADER } from '@/lib/constants';
-import { createDemoSession, getSessionDto, setAccountLinkStatus } from '@/lib/session/session.server';
+import { DEFAULT_ONCADE_API_BASE_URL, SESSION_HEADER, SESSION_STATE_HEADER } from '@/lib/constants';
+import { createDemoSession } from '@/lib/session/session.server';
 import { SUBSCRIPTION_STATUS } from '@/lib/subscription/subscription.types';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
 import { buildAppUrl, buildJsonRequest, jsonResponse } from './helpers/http';
@@ -24,13 +24,17 @@ function buildRemoteCheckoutUrl(redirectUrl: string = TEST_REDIRECT_URL): string
   return target.toString();
 }
 
-function buildRequest(sessionId: string, redirectUrl: string = TEST_REDIRECT_URL) {
+function buildRequest(sessionId: string, redirectUrl: string = TEST_REDIRECT_URL, sessionState?: unknown) {
+  const headers: Record<string, string> = {
+    [SESSION_HEADER]: sessionId,
+  };
+  if (sessionState) {
+    headers[SESSION_STATE_HEADER] = encodeURIComponent(JSON.stringify(sessionState));
+  }
   return buildJsonRequest(SUBSCRIPTION_SUBSCRIBE_URL, {
     method: 'POST',
     body: { redirectUrl },
-    headers: {
-      [SESSION_HEADER]: sessionId,
-    },
+    headers,
   });
 }
 
@@ -51,7 +55,11 @@ function buildPlanResponse() {
 describe('POST /api/subscription/subscribe', () => {
   it('returns redirect url from checkout endpoint', async () => {
     const session = createDemoSession('checkout@test.com');
-    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Linked);
+    const sessionState = {
+      ...session,
+      accountLinkStatus: ACCOUNT_LINK_STATUS.Linked,
+      subscriptionStatus: SUBSCRIPTION_STATUS.Inactive,
+    };
 
     const planResponse = buildPlanResponse();
     const checkoutResponse = new Response(null, {
@@ -64,15 +72,12 @@ describe('POST /api/subscription/subscribe', () => {
       .mockResolvedValueOnce(planResponse)
       .mockResolvedValueOnce(checkoutResponse);
 
-    const response = await handleSubscriptionSubscribePost(buildRequest(session.id));
+    const response = await handleSubscriptionSubscribePost(buildRequest(session.id, TEST_REDIRECT_URL, sessionState));
     expect(response.status).toBe(200);
 
     const payload = await response.json();
     expect(payload.success).toBe(true);
     expect(payload.data.redirectUrl).toBe(STORE_REDIRECT_URL);
-
-    const updatedSession = getSessionDto(session.id);
-    expect(updatedSession?.subscriptionStatus).toBe(SUBSCRIPTION_STATUS.Inactive);
 
     expect(fetchSpy).toHaveBeenCalledTimes(2);
 
@@ -87,7 +92,11 @@ describe('POST /api/subscription/subscribe', () => {
 
   it('propagates error responses from checkout endpoint', async () => {
     const session = createDemoSession('failure@test.com');
-    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Linked);
+    const sessionState = {
+      ...session,
+      accountLinkStatus: ACCOUNT_LINK_STATUS.Linked,
+      subscriptionStatus: SUBSCRIPTION_STATUS.Inactive,
+    };
 
     const planResponse = buildPlanResponse();
     const errorResponse = jsonResponse({ error: 'Item not found' }, 404);
@@ -96,53 +105,52 @@ describe('POST /api/subscription/subscribe', () => {
       .mockResolvedValueOnce(planResponse)
       .mockResolvedValueOnce(errorResponse);
 
-    const response = await handleSubscriptionSubscribePost(buildRequest(session.id));
+    const response = await handleSubscriptionSubscribePost(buildRequest(session.id, TEST_REDIRECT_URL, sessionState));
     expect(response.status).toBe(404);
 
     const payload = await response.json();
     expect(payload.success).toBe(false);
     expect(payload.error).toBe('Item not found');
-
-    const updatedSession = getSessionDto(session.id);
-    expect(updatedSession?.subscriptionStatus).toBe(SUBSCRIPTION_STATUS.Inactive);
   });
 
   it('handles network failures when requesting checkout redirect', async () => {
     const session = createDemoSession('network@test.com');
-    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Linked);
+    const sessionState = {
+      ...session,
+      accountLinkStatus: ACCOUNT_LINK_STATUS.Linked,
+      subscriptionStatus: SUBSCRIPTION_STATUS.Inactive,
+    };
 
     const planResponse = buildPlanResponse();
 
     vi.spyOn(global, 'fetch').mockResolvedValueOnce(planResponse).mockRejectedValueOnce(new Error('connect ECONNREFUSED'));
 
-    const response = await handleSubscriptionSubscribePost(buildRequest(session.id));
+    const response = await handleSubscriptionSubscribePost(buildRequest(session.id, TEST_REDIRECT_URL, sessionState));
     expect(response.status).toBe(502);
 
     const payload = await response.json();
     expect(payload.success).toBe(false);
     expect(payload.error).toMatch(/Checkout redirect request failed/);
-
-    const updatedSession = getSessionDto(session.id);
-    expect(updatedSession?.subscriptionStatus).toBe(SUBSCRIPTION_STATUS.Inactive);
   });
 
   it('returns configuration error when checkout item id is missing', async () => {
     const session = createDemoSession('config@test.com');
-    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Linked);
+    const sessionState = {
+      ...session,
+      accountLinkStatus: ACCOUNT_LINK_STATUS.Linked,
+      subscriptionStatus: SUBSCRIPTION_STATUS.Inactive,
+    };
     const originalItemId = process.env.DEMO_PLAN_ITEM_ID;
     delete process.env.DEMO_PLAN_ITEM_ID;
 
     const fetchSpy = vi.spyOn(global, 'fetch');
-    const response = await handleSubscriptionSubscribePost(buildRequest(session.id));
+    const response = await handleSubscriptionSubscribePost(buildRequest(session.id, TEST_REDIRECT_URL, sessionState));
 
     expect(response.status).toBe(500);
     const payload = await response.json();
     expect(payload.success).toBe(false);
     expect(payload.error).toMatch(/checkout item identifier/);
     expect(fetchSpy).not.toHaveBeenCalled();
-
-    const updatedSession = getSessionDto(session.id);
-    expect(updatedSession?.subscriptionStatus).toBe(SUBSCRIPTION_STATUS.Inactive);
 
     if (originalItemId) {
       process.env.DEMO_PLAN_ITEM_ID = originalItemId;

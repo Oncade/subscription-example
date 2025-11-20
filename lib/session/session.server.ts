@@ -3,7 +3,7 @@ import 'server-only';
 import crypto from 'crypto';
 import { NextRequest } from 'next/server';
 
-import { ACCOUNT_LINK_STATUS, type AccountLinkStatus } from '@/lib/accountLink/accountLink.types';
+import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
 import {
   HEADER_API_VERSION,
   HEADER_AUTHORIZATION,
@@ -13,19 +13,12 @@ import {
   ONCADE_API_VERSION_HEADER_VALUE,
 } from '@/lib/constants';
 import { getOncadeIntegrationConfig } from '@/lib/env/config.server';
-import { SUBSCRIPTION_STATUS, type SubscriptionStatus } from '@/lib/subscription/subscription.types';
+import { SUBSCRIPTION_STATUS } from '@/lib/subscription/subscription.types';
 import type { DemoSessionDto, DemoSessionId, DemoSessionRecord } from '@/lib/session/session.types';
 
 export const SESSION_ERROR_MISSING_IDENTIFIER = 'Missing session identifier' as const;
 export const SESSION_ERROR_UNKNOWN_IDENTIFIER = 'Unknown session identifier' as const;
 
-function normalizeUserRef(value: unknown): string | undefined {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed ? trimmed : undefined;
-}
 
 function normalizeEmail(value: unknown): string | undefined {
   if (typeof value !== 'string') {
@@ -62,13 +55,16 @@ function sanitizeBaseUrl(value: string): string {
   return value.replace(TRAILING_SLASHES, '');
 }
 
-async function fetchLinkSessionDetails(
+export async function fetchLinkSessionDetails(
   sessionKey: string,
 ): Promise<{ email?: string; userRef?: string | null } | undefined> {
-  const { apiBaseUrl } = getOncadeIntegrationConfig();
+  const { apiBaseUrl, serverApiKey, gameId } = getOncadeIntegrationConfig();
   const baseUrl = sanitizeBaseUrl(apiBaseUrl);
   try {
-    const response = await fetch(`${baseUrl}/api/v1/users/link/details?session=${encodeURIComponent(sessionKey)}`);
+    const headers = buildServerHeaders(serverApiKey, gameId);
+    const response = await fetch(`${baseUrl}/api/v1/users/link/details?session=${encodeURIComponent(sessionKey)}`, {
+      headers,
+    });
     if (!response.ok) {
       return undefined;
     }
@@ -267,13 +263,15 @@ export async function resolveSessionIdByUserRefWithLookup(userRef: string): Prom
 // These are deprecated and should be removed once all code is updated
 
 /** @deprecated Use getSessionDtoFromRequest instead - sessions are now client-side only */
-export function getSessionDto(id: DemoSessionId): DemoSessionDto | undefined {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function getSessionDto(_id: DemoSessionId): DemoSessionDto | undefined {
   // Always return undefined - sessions are client-side only
   return undefined;
 }
 
 /** @deprecated Use requireSessionFromRequest instead - sessions are now client-side only */
-export function getSessionRecord(id: DemoSessionId): DemoSessionRecord | undefined {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function getSessionRecord(_id: DemoSessionId): DemoSessionRecord | undefined {
   // Always return undefined - sessions are now client-side only
   return undefined;
 }

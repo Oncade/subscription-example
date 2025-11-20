@@ -5,9 +5,8 @@ import { NextRequest } from 'next/server';
 
 import { handleWebhookAccountLinkingPost } from '@/app/api/routes/webhookAccountLinking';
 import { initiateAccountLinkSession } from '@/lib/accountLink/accountLink.server';
-import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
 import { WEBHOOK_SIGNATURE_HEADER } from '@/lib/constants';
-import { createDemoSession, getSessionDto } from '@/lib/session/session.server';
+import { createDemoSession } from '@/lib/session/session.server';
 import { DEMO_APP_ORIGIN, buildAppUrl } from './helpers/http';
 
 function makeSignedRequest(path: string, body: unknown, secret: string): NextRequest {
@@ -24,7 +23,7 @@ function makeSignedRequest(path: string, body: unknown, secret: string): NextReq
 }
 
 describe('account-linking webhook route', () => {
-  it('validates signature and updates session', async () => {
+  it('validates signature and pushes events to clients', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -39,7 +38,7 @@ describe('account-linking webhook route', () => {
 
     const secret = process.env.DEMO_WEBHOOK_SECRET ?? 'test-secret';
     const session = createDemoSession('webhook@test.com');
-    const linkSession = await initiateAccountLinkSession(session.id, DEMO_APP_ORIGIN);
+    const linkSession = await initiateAccountLinkSession(session.id, session.email, DEMO_APP_ORIGIN);
 
     const request = makeSignedRequest(
       '/api/webhooks/account-linking',
@@ -53,10 +52,7 @@ describe('account-linking webhook route', () => {
 
     const response = await handleWebhookAccountLinkingPost(request);
     expect(response.status).toBe(200);
-
-    const updated = getSessionDto(session.id);
-    expect(updated?.accountLinkStatus).toBe(ACCOUNT_LINK_STATUS.Linked);
-    expect(updated?.linkedUserRef).toBe('ref_123');
+    // Webhook events are now pushed directly to clients, not stored server-side
   });
 
   it('rejects invalid signature', async () => {
@@ -73,7 +69,7 @@ describe('account-linking webhook route', () => {
     );
 
     const session = createDemoSession('bad-signature@test.com');
-    const linkSession = await initiateAccountLinkSession(session.id, DEMO_APP_ORIGIN);
+    const linkSession = await initiateAccountLinkSession(session.id, session.email, DEMO_APP_ORIGIN);
 
     const request = new NextRequest(buildAppUrl('/api/webhooks/account-linking'), {
       method: 'POST',

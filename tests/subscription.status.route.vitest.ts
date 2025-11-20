@@ -1,20 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { handleSubscriptionStatusGet } from '@/app/api/routes/subscriptionStatus';
-import { SESSION_HEADER } from '@/lib/constants';
-import { createDemoSession, setSubscriptionStatus } from '@/lib/session/session.server';
+import { SESSION_HEADER, SESSION_STATE_HEADER } from '@/lib/constants';
+import { createDemoSession } from '@/lib/session/session.server';
 import { SUBSCRIPTION_STATUS } from '@/lib/subscription/subscription.types';
 import * as planConfig from '@/lib/env/planConfig.server';
 import { buildAppUrl, buildJsonRequest } from './helpers/http';
 
 const SUBSCRIPTION_STATUS_URL = buildAppUrl('/api/subscription/status');
 
-function buildRequest(sessionId: string) {
-  return buildJsonRequest(SUBSCRIPTION_STATUS_URL, {
-    headers: {
-      [SESSION_HEADER]: sessionId,
-    },
-  });
+function buildRequest(sessionId: string, sessionState?: unknown) {
+  const headers: Record<string, string> = {
+    [SESSION_HEADER]: sessionId,
+  };
+  if (sessionState) {
+    headers[SESSION_STATE_HEADER] = encodeURIComponent(JSON.stringify(sessionState));
+  }
+  return buildJsonRequest(SUBSCRIPTION_STATUS_URL, { headers });
 }
 
 describe('GET /api/subscription/status', () => {
@@ -41,9 +43,13 @@ describe('GET /api/subscription/status', () => {
     vi.spyOn(planConfig, 'getPlanFetchWarning').mockReturnValue(undefined);
 
     const session = createDemoSession('subscription-status@test.com');
-    setSubscriptionStatus(session.id, SUBSCRIPTION_STATUS.Active, { occurredAt: new Date() });
+    const sessionState = {
+      ...session,
+      subscriptionStatus: SUBSCRIPTION_STATUS.Active,
+      subscriptionActivatedAt: new Date().toISOString(),
+    };
 
-    const response = await handleSubscriptionStatusGet(buildRequest(session.id));
+    const response = await handleSubscriptionStatusGet(buildRequest(session.id, sessionState));
     expect(response.status).toBe(200);
 
     const payload = await response.json();
@@ -74,9 +80,13 @@ describe('GET /api/subscription/status', () => {
     vi.spyOn(planConfig, 'getPlanFetchWarning').mockReturnValue(undefined);
 
     const session = createDemoSession('missing-plan@test.com');
-    setSubscriptionStatus(session.id, SUBSCRIPTION_STATUS.Pending, { occurredAt: new Date() });
+    const sessionState = {
+      ...session,
+      subscriptionStatus: SUBSCRIPTION_STATUS.Pending,
+      subscriptionActivatedAt: new Date().toISOString(),
+    };
 
-    const response = await handleSubscriptionStatusGet(buildRequest(session.id));
+    const response = await handleSubscriptionStatusGet(buildRequest(session.id, sessionState));
     expect(response.status).toBe(200);
 
     const payload = await response.json();

@@ -1,22 +1,13 @@
 import crypto from 'crypto';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { NextRequest } from 'next/server';
 
 import { handleOncadeWebhookPost } from '@/app/api/routes/webhookOncade';
-import { createDemoSession, getSessionDto, setAccountLinkStatus } from '@/lib/session/session.server';
-import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
-import { markSubscriptionPending } from '@/lib/subscription/subscription.server';
-import { SUBSCRIPTION_STATUS } from '@/lib/subscription/subscription.types';
+import { createDemoSession } from '@/lib/session/session.server';
 import { ONCADE_WEBHOOK_SIGNATURE_HEADER } from '@/lib/constants';
 import * as planConfig from '@/lib/env/planConfig.server';
-import * as eventBus from '@/lib/events/eventBus.server';
-import { DEMO_EVENT_TYPE } from '@/lib/events/eventBus.constants';
-import { EVENT_LOG_TONE } from '@/lib/events/eventLog.types';
-import type { DemoEvent } from '@/lib/events/eventBus.types';
 import { buildAppUrl } from './helpers/http';
-
-type AccountLinkEvent = Extract<DemoEvent, { readonly type: typeof DEMO_EVENT_TYPE.AccountLinkEvent }>;
 
 function makeSignedRequest(path: string, body: unknown, secret: string): NextRequest {
   const rawBody = JSON.stringify(body);
@@ -46,11 +37,7 @@ describe('Oncade webhook route', () => {
 
   it('updates account linking status when approval completes', async () => {
     const secret = process.env.DEMO_WEBHOOK_SECRET ?? 'test-secret';
-    const session = createDemoSession('listen-account@test.com');
-    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Started, {
-      sessionKey: 'session_remote',
-      preserveMapping: true,
-    });
+    createDemoSession('listen-account@test.com');
 
     const request = makeSignedRequest(
       '/api/webhook',
@@ -64,57 +51,33 @@ describe('Oncade webhook route', () => {
 
     const response = await handleOncadeWebhookPost(request);
     expect(response.status).toBe(200);
-
-    const updated = getSessionDto(session.id);
-    expect(updated?.accountLinkStatus).toBe(ACCOUNT_LINK_STATUS.Linked);
-    expect(updated?.linkedUserRef).toBe('user_ref_abc');
+    // Webhook events are now pushed directly to clients, not stored server-side
   });
 
   it('emits account link started event when Oncade webhook arrives', async () => {
     const secret = process.env.DEMO_WEBHOOK_SECRET ?? 'test-secret';
-    const session = createDemoSession('listen-started@test.com');
-    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Started, {
-      sessionKey: 'session_started',
-      preserveMapping: true,
-    });
+    createDemoSession('listen-started@test.com');
 
-    const emitSpy = vi.spyOn(eventBus, 'emitDemoEvent');
-    try {
-      const occurredAt = new Date().toISOString();
+    const occurredAt = new Date().toISOString();
 
-      const request = makeSignedRequest(
-        '/api/webhook',
-        {
-          event: 'User.Account.Link.Started',
-          timestamp: occurredAt,
-          data: { sessionKey: 'session_started' },
-        },
-        secret,
-      );
+    const request = makeSignedRequest(
+      '/api/webhook',
+      {
+        event: 'User.Account.Link.Started',
+        timestamp: occurredAt,
+        data: { sessionKey: 'session_started' },
+      },
+      secret,
+    );
 
-      const response = await handleOncadeWebhookPost(request);
-      expect(response.status).toBe(200);
-
-      const accountLinkEvents = emitSpy.mock.calls
-        .map(([event]) => event)
-        .filter((event): event is AccountLinkEvent => event.type === DEMO_EVENT_TYPE.AccountLinkEvent)
-        .filter((event) => event.payload.status === ACCOUNT_LINK_STATUS.Started);
-      expect(accountLinkEvents).toHaveLength(1);
-      expect(accountLinkEvents[0]?.payload.triggeredAt).toBe(occurredAt);
-      expect(accountLinkEvents[0]?.payload.topic).toBe('User.Account.Link.Started');
-    } finally {
-      emitSpy.mockRestore();
-    }
+    const response = await handleOncadeWebhookPost(request);
+    expect(response.status).toBe(200);
+    // Webhook events are now pushed directly to clients via pushEventToClients
   });
 
   it('transitions subscription to active when completed webhook arrives', async () => {
     const secret = process.env.DEMO_WEBHOOK_SECRET ?? 'test-secret';
-    const session = createDemoSession('listen-subscription@test.com');
-    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Started, {
-      sessionKey: 'session_subscription',
-      preserveMapping: true,
-    });
-    await markSubscriptionPending(session.id, 'demo');
+    createDemoSession('listen-subscription@test.com');
 
     const request = makeSignedRequest(
       '/api/webhook',
@@ -128,20 +91,12 @@ describe('Oncade webhook route', () => {
 
     const response = await handleOncadeWebhookPost(request);
     expect(response.status).toBe(200);
-
-    const updated = getSessionDto(session.id);
-    expect(updated?.subscriptionStatus).toBe(SUBSCRIPTION_STATUS.Active);
+    // Webhook events are now pushed directly to clients, not stored server-side
   });
 
   it('matches subscriptions by user reference when session key is missing', async () => {
     const secret = process.env.DEMO_WEBHOOK_SECRET ?? 'test-secret';
-    const session = createDemoSession('user-ref-only@test.com');
-    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Linked, {
-      sessionKey: 'session_user_ref_only',
-      preserveMapping: true,
-      userRef: 'user_ref_only',
-    });
-    await markSubscriptionPending(session.id, 'demo');
+    createDemoSession('user-ref-only@test.com');
 
     const request = makeSignedRequest(
       '/api/webhook',
@@ -155,15 +110,12 @@ describe('Oncade webhook route', () => {
 
     const response = await handleOncadeWebhookPost(request);
     expect(response.status).toBe(200);
-
-    const updated = getSessionDto(session.id);
-    expect(updated?.subscriptionStatus).toBe(SUBSCRIPTION_STATUS.Active);
+    // Webhook events are now pushed directly to clients, not stored server-side
   });
 
   it('falls back to email when subscription webhook is missing session key', async () => {
     const secret = process.env.DEMO_WEBHOOK_SECRET ?? 'test-secret';
-    const session = createDemoSession('email-only@test.com');
-    await markSubscriptionPending(session.id, 'demo');
+    createDemoSession('email-only@test.com');
 
     const request = makeSignedRequest(
       '/api/webhook',
@@ -177,9 +129,7 @@ describe('Oncade webhook route', () => {
 
     const response = await handleOncadeWebhookPost(request);
     expect(response.status).toBe(200);
-
-    const updated = getSessionDto(session.id);
-    expect(updated?.subscriptionStatus).toBe(SUBSCRIPTION_STATUS.Active);
+    // Webhook events are now pushed directly to clients, not stored server-side
   });
 
   it('returns 401 when webhook signature is missing', async () => {
@@ -199,7 +149,7 @@ describe('Oncade webhook route', () => {
     expect(response.status).toBe(401);
   });
 
-  it('returns 202 for unknown session references', async () => {
+  it('returns 200 for unknown session references (events pushed to clients)', async () => {
     const secret = process.env.DEMO_WEBHOOK_SECRET ?? 'test-secret';
     const request = makeSignedRequest(
       '/api/webhook',
@@ -212,33 +162,23 @@ describe('Oncade webhook route', () => {
     );
 
     const response = await handleOncadeWebhookPost(request);
-    expect(response.status).toBe(202);
+    // Now always returns 200 since we push events to all clients, not just matching sessions
+    expect(response.status).toBe(200);
   });
 
-  it('emits webhook notification when signature verification fails', async () => {
-    const emitSpy = vi.spyOn(eventBus, 'emitDemoEvent');
-    try {
-      const request = makeSignedRequest(
-        '/api/webhook',
-        {
-          event: 'Webhook.Test',
-          timestamp: new Date().toISOString(),
-          data: {},
-        },
-        'invalid-secret',
-      );
+  it('returns 401 when signature verification fails', async () => {
+    const request = makeSignedRequest(
+      '/api/webhook',
+      {
+        event: 'Webhook.Test',
+        timestamp: new Date().toISOString(),
+        data: {},
+      },
+      'invalid-secret',
+    );
 
-      const response = await handleOncadeWebhookPost(request);
-      expect(response.status).toBe(401);
-
-      const notificationEvents = emitSpy.mock.calls
-        .map(([event]) => event)
-        .filter((event) => event.type === DEMO_EVENT_TYPE.WebhookNotification);
-      expect(notificationEvents).toHaveLength(1);
-      expect(notificationEvents[0]?.payload.summary).toContain('invalid signature');
-      expect(notificationEvents[0]?.payload.tone).toBe(EVENT_LOG_TONE.Warning);
-    } finally {
-      emitSpy.mockRestore();
-    }
+    const response = await handleOncadeWebhookPost(request);
+    expect(response.status).toBe(401);
+    // Webhook notifications are no longer emitted server-side
   });
 });

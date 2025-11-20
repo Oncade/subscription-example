@@ -3,8 +3,8 @@ import type { MockInstance } from 'vitest';
 
 import { handleSubscriptionCancelPost } from '@/app/api/routes/subscriptionCancel';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
-import { SESSION_HEADER } from '@/lib/constants';
-import { createDemoSession, setAccountLinkStatus } from '@/lib/session/session.server';
+import { SESSION_HEADER, SESSION_STATE_HEADER } from '@/lib/constants';
+import { createDemoSession } from '@/lib/session/session.server';
 import * as planConfig from '@/lib/env/planConfig.server';
 import { buildAppUrl, buildJsonRequest, jsonResponse } from './helpers/http';
 
@@ -18,12 +18,16 @@ const TEST_PLAN = {
 
 const SUBSCRIPTION_CANCEL_URL = buildAppUrl('/api/subscription/cancel');
 
-function buildRequest(sessionId: string) {
+function buildRequest(sessionId: string, sessionState?: unknown) {
+  const headers: Record<string, string> = {
+    [SESSION_HEADER]: sessionId,
+  };
+  if (sessionState) {
+    headers[SESSION_STATE_HEADER] = encodeURIComponent(JSON.stringify(sessionState));
+  }
   return buildJsonRequest(SUBSCRIPTION_CANCEL_URL, {
     method: 'POST',
-    headers: {
-      [SESSION_HEADER]: sessionId,
-    },
+    headers,
   });
 }
 
@@ -36,11 +40,12 @@ describe('POST /api/subscription/cancel', () => {
 
   it('cancels subscriptions via server API when linked account has an active match', async () => {
     const session = createDemoSession('cancel-success@test.com');
-    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Linked, {
-      sessionKey: 'session_remote',
-      preserveMapping: true,
-      userRef: 'link_usr_123',
-    });
+    const sessionState = {
+      ...session,
+      accountLinkStatus: ACCOUNT_LINK_STATUS.Linked,
+      linkSessionKey: 'session_remote',
+      linkedUserRef: 'link_usr_123',
+    };
 
     const fetchSpy = vi
       .spyOn(global, 'fetch')
@@ -53,7 +58,7 @@ describe('POST /api/subscription/cancel', () => {
       )
       .mockResolvedValueOnce(jsonResponse({ success: true }, 200));
 
-    const response = await handleSubscriptionCancelPost(buildRequest(session.id));
+    const response = await handleSubscriptionCancelPost(buildRequest(session.id, sessionState));
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.success).toBe(true);
@@ -69,11 +74,12 @@ describe('POST /api/subscription/cancel', () => {
 
   it('rejects cancellation when linked account has no active subscription', async () => {
     const session = createDemoSession('cancel-missing@test.com');
-    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Linked, {
-      sessionKey: 'session_remote',
-      preserveMapping: true,
-      userRef: 'link_usr_999',
-    });
+    const sessionState = {
+      ...session,
+      accountLinkStatus: ACCOUNT_LINK_STATUS.Linked,
+      linkSessionKey: 'session_remote',
+      linkedUserRef: 'link_usr_999',
+    };
 
     vi.spyOn(global, 'fetch').mockResolvedValueOnce(
       jsonResponse({
@@ -83,7 +89,7 @@ describe('POST /api/subscription/cancel', () => {
       }),
     );
 
-    const response = await handleSubscriptionCancelPost(buildRequest(session.id));
+    const response = await handleSubscriptionCancelPost(buildRequest(session.id, sessionState));
     expect(response.status).toBe(404);
     const payload = await response.json();
     expect(payload.success).toBe(false);
@@ -92,11 +98,12 @@ describe('POST /api/subscription/cancel', () => {
 
   it('rejects cancellation when linked subscription item differs from the demo plan', async () => {
     const session = createDemoSession('cancel-mismatch@test.com');
-    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Linked, {
-      sessionKey: 'session_remote',
-      preserveMapping: true,
-      userRef: 'link_usr_item_mismatch',
-    });
+    const sessionState = {
+      ...session,
+      accountLinkStatus: ACCOUNT_LINK_STATUS.Linked,
+      linkSessionKey: 'session_remote',
+      linkedUserRef: 'link_usr_item_mismatch',
+    };
 
     vi.spyOn(global, 'fetch').mockResolvedValueOnce(
       jsonResponse({
@@ -106,7 +113,7 @@ describe('POST /api/subscription/cancel', () => {
       }),
     );
 
-    const response = await handleSubscriptionCancelPost(buildRequest(session.id));
+    const response = await handleSubscriptionCancelPost(buildRequest(session.id, sessionState));
     expect(response.status).toBe(404);
     const payload = await response.json();
     expect(payload.success).toBe(false);
@@ -115,34 +122,37 @@ describe('POST /api/subscription/cancel', () => {
 
   it('returns 409 when linked user reference is unavailable', async () => {
     const session = createDemoSession('cancel-missing-ref@test.com');
-    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Linked, {
-      sessionKey: 'session_remote',
-      preserveMapping: true,
-    });
+    const sessionState = {
+      ...session,
+      accountLinkStatus: ACCOUNT_LINK_STATUS.Linked,
+      linkSessionKey: 'session_remote',
+      // linkedUserRef is missing
+    };
 
-    const response = await handleSubscriptionCancelPost(buildRequest(session.id));
+    const response = await handleSubscriptionCancelPost(buildRequest(session.id, sessionState));
     expect(response.status).toBe(409);
     const payload = await response.json();
     expect(payload.success).toBe(false);
     expect(payload.error).toMatch(/linked user reference/i);
   });
 
-  it('returns 409 when account has not been linked', async () => {
+  it('returns 404 when account has not been linked (session state missing)', async () => {
     const session = createDemoSession('cancel-not-linked@test.com');
+    // No session state provided - route will fail to get session from headers
     const response = await handleSubscriptionCancelPost(buildRequest(session.id));
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(404);
     const payload = await response.json();
     expect(payload.success).toBe(false);
-    expect(payload.error).toMatch(/link your oncade account/i);
   });
 
   it('propagates cancellation API failures', async () => {
     const session = createDemoSession('cancel-failure@test.com');
-    setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Linked, {
-      sessionKey: 'session_remote',
-      preserveMapping: true,
-      userRef: 'link_usr_555',
-    });
+    const sessionState = {
+      ...session,
+      accountLinkStatus: ACCOUNT_LINK_STATUS.Linked,
+      linkSessionKey: 'session_remote',
+      linkedUserRef: 'link_usr_555',
+    };
 
     vi.spyOn(global, 'fetch')
       .mockResolvedValueOnce(
@@ -154,7 +164,7 @@ describe('POST /api/subscription/cancel', () => {
       )
       .mockResolvedValueOnce(jsonResponse({ error: 'Cancel failed' }, 500));
 
-    const response = await handleSubscriptionCancelPost(buildRequest(session.id));
+    const response = await handleSubscriptionCancelPost(buildRequest(session.id, sessionState));
     expect(response.status).toBe(500);
     const payload = await response.json();
     expect(payload.success).toBe(false);

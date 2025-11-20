@@ -9,12 +9,14 @@ import { buildAppUrl, buildJsonRequest } from './helpers/http';
 
 const ACCOUNT_LINK_STATUS_URL = buildAppUrl('/api/account/link/status');
 
-function buildRequest(sessionId: string) {
-  return buildJsonRequest(ACCOUNT_LINK_STATUS_URL, {
-    headers: {
-      [SESSION_HEADER]: sessionId,
-    },
-  });
+function buildRequest(sessionId: string, sessionState?: unknown) {
+  const headers: Record<string, string> = {
+    [SESSION_HEADER]: sessionId,
+  };
+  if (sessionState) {
+    headers[SESSION_STATE_HEADER] = encodeURIComponent(JSON.stringify(sessionState));
+  }
+  return buildJsonRequest(ACCOUNT_LINK_STATUS_URL, { headers });
 }
 
 describe('GET /api/account/link/status', () => {
@@ -33,12 +35,13 @@ describe('GET /api/account/link/status', () => {
     );
 
     const session = sessionStore.createDemoSession('pending@example.com');
-    sessionStore.setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Started, {
-      sessionKey: 'session_pending',
-      preserveMapping: true,
-    });
+    const sessionState = {
+      ...session,
+      accountLinkStatus: ACCOUNT_LINK_STATUS.Started,
+      linkSessionKey: 'session_pending',
+    };
 
-    const response = await handleAccountLinkStatusGet(buildRequest(session.id));
+    const response = await handleAccountLinkStatusGet(buildRequest(session.id, sessionState));
     const payload = await response.json();
     expect(payload.success).toBe(true);
     expect(payload.data.accountLinkStatus).toBe(ACCOUNT_LINK_STATUS.Started);
@@ -93,19 +96,17 @@ describe('GET /api/account/link/status', () => {
     );
 
     const session = sessionStore.createDemoSession('linked@example.com');
-    sessionStore.setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Started, {
-      sessionKey: 'session_linked',
-      preserveMapping: true,
-    });
+    const sessionState = {
+      ...session,
+      accountLinkStatus: ACCOUNT_LINK_STATUS.Started,
+      linkSessionKey: 'session_linked',
+    };
 
-    const response = await handleAccountLinkStatusGet(buildRequest(session.id));
+    const response = await handleAccountLinkStatusGet(buildRequest(session.id, sessionState));
     const payload = await response.json();
     expect(payload.success).toBe(true);
     expect(payload.data.accountLinkStatus).toBe(ACCOUNT_LINK_STATUS.Linked);
     expect(payload.data.linkedUserRef).toBe('user_ref_123');
-
-    const updated = sessionStore.getSessionDto(session.id);
-    expect(updated?.linkedUserRef).toBe('user_ref_123');
   });
 
   it('updates linked user reference even when status is unchanged', async () => {
@@ -124,20 +125,17 @@ describe('GET /api/account/link/status', () => {
     );
 
     const session = sessionStore.createDemoSession('linked@example.com');
-    sessionStore.setAccountLinkStatus(session.id, ACCOUNT_LINK_STATUS.Linked, {
-      sessionKey: 'session_linked',
-      preserveMapping: true,
-    });
+    const sessionState = {
+      ...session,
+      accountLinkStatus: ACCOUNT_LINK_STATUS.Linked,
+      linkSessionKey: 'session_linked',
+    };
 
-    const response = await handleAccountLinkStatusGet(buildRequest(session.id));
+    const response = await handleAccountLinkStatusGet(buildRequest(session.id, sessionState));
     const payload = await response.json();
 
     expect(payload.success).toBe(true);
     expect(payload.data.accountLinkStatus).toBe(ACCOUNT_LINK_STATUS.Linked);
-    expect(payload.data.accountLinkStatus).toBe(ACCOUNT_LINK_STATUS.Linked);
     expect(payload.data.linkedUserRef).toBe('user_ref_123');
-
-    const updated = sessionStore.getSessionDto(session.id);
-    expect(updated?.linkedUserRef).toBe('user_ref_123');
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { handleEventsStreamGet } from '@/app/api/routes/eventsStream';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
-import * as eventBus from '@/lib/events/eventBus.server';
+import { pushEventToClients } from '@/lib/events/eventStream.server';
 import { DEMO_EVENT_TYPE } from '@/lib/events/eventBus.constants';
 import type { DemoEvent } from '@/lib/events/eventBus.types';
 import { SUBSCRIPTION_STATUS } from '@/lib/subscription/subscription.types';
@@ -64,7 +64,7 @@ describe('GET /api/events/stream', () => {
       };
 
       const eventReadPromise = reader.read();
-      eventBus.emitDemoEvent(demoEvent);
+      pushEventToClients(demoEvent);
 
       const eventChunk = await eventReadPromise;
       expect(eventChunk.done).toBe(false);
@@ -88,12 +88,8 @@ describe('GET /api/events/stream', () => {
     }
   });
 
-  it('cleans up the event bus subscription when the stream is canceled', async () => {
-    const unsubscribe = vi.fn();
-    const subscribeSpy = vi.spyOn(eventBus, 'subscribeToDemoEvents').mockReturnValue(unsubscribe);
-
+  it('cleans up client connection when the stream is canceled', async () => {
     const response = await handleEventsStreamGet();
-    expect(subscribeSpy).toHaveBeenCalledTimes(1);
 
     const reader = response.body?.getReader();
     expect(reader).toBeTruthy();
@@ -101,7 +97,15 @@ describe('GET /api/events/stream', () => {
       throw new Error('Readable stream not available for cancellation.');
     }
 
+    // Verify we can read the initial open event
+    const openChunk = await reader.read();
+    expect(openChunk.done).toBe(false);
+
+    // Cancel the stream - this should clean up the client connection
     await reader.cancel();
-    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    
+    // After cancellation, subsequent reads should indicate done
+    const finalChunk = await reader.read();
+    expect(finalChunk.done).toBe(true);
   });
 });

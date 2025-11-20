@@ -121,15 +121,34 @@ export function LandingExperienceEventsProvider({
   }, []);
 
   // Sync state from session when it changes
+  // Using refs to track previous values and only update when changed
+  // This is a legitimate use case for syncing derived state from props
+  const prevSessionRef = useRef<DemoSessionDto | null>(session);
+  
   useEffect(() => {
     sessionRef.current = session;
-    if (session) {
-      updateAccountLinkStatus(session.accountLinkStatus);
-      updateSubscriptionStatus(session.subscriptionStatus);
-      updateLinkExpiresAt(session.linkExpiresAt);
-      updateActivatedAt(session.subscriptionActivatedAt);
+    const prevSession = prevSessionRef.current;
+    
+    if (session && session !== prevSession) {
+      // Only update if values actually changed to avoid unnecessary renders
+      if (prevSession?.accountLinkStatus !== session.accountLinkStatus) {
+        setAccountLinkStatusState(session.accountLinkStatus);
+      }
+      if (prevSession?.subscriptionStatus !== session.subscriptionStatus) {
+        setSubscriptionStatusState(session.subscriptionStatus);
+      }
+      if (prevSession?.linkExpiresAt !== session.linkExpiresAt) {
+        setLinkExpiresAtState(session.linkExpiresAt);
+      }
+      if (prevSession?.subscriptionActivatedAt !== session.subscriptionActivatedAt) {
+        setActivatedAtState(session.subscriptionActivatedAt);
+      }
+      prevSessionRef.current = session;
+    } else if (!session && prevSession) {
+      prevSessionRef.current = null;
     }
-  }, [session, updateAccountLinkStatus, updateSubscriptionStatus, updateLinkExpiresAt, updateActivatedAt]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  }, [session?.id, session?.accountLinkStatus, session?.subscriptionStatus, session?.linkExpiresAt, session?.subscriptionActivatedAt]);
 
   const handleDemoEvent = useCallback(
     (event: DemoEvent) => {
