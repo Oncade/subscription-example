@@ -44,7 +44,6 @@ function toDto(record: DemoSessionRecord): DemoSessionDto {
     linkedUserRef: record.linkedUserRef,
     linkSessionKey: record.linkSessionKey,
     linkIdempotencyKey: record.linkIdempotencyKey,
-    linkExpiresAt: record.linkExpiresAt?.toISOString(),
     subscriptionActivatedAt: record.subscriptionActivatedAt?.toISOString(),
     lastWebhookAt: record.lastWebhookAt?.toISOString(),
   }
@@ -143,7 +142,6 @@ function parseSessionStateHeader(value: string | null): DemoSessionDto | undefin
       linkedUserRef: parsed.linkedUserRef ?? undefined,
       linkSessionKey: parsed.linkSessionKey ?? undefined,
       linkIdempotencyKey: parsed.linkIdempotencyKey ?? undefined,
-      linkExpiresAt: parsed.linkExpiresAt ?? undefined,
       subscriptionActivatedAt: parsed.subscriptionActivatedAt ?? undefined,
       lastWebhookAt: parsed.lastWebhookAt ?? undefined,
     };
@@ -163,7 +161,6 @@ function rehydrateSessionFromDto(dto: DemoSessionDto): DemoSessionRecord {
     linkedUserRef: dto.linkedUserRef,
     linkSessionKey: dto.linkSessionKey,
     linkIdempotencyKey: dto.linkIdempotencyKey,
-    linkExpiresAt: dto.linkExpiresAt ? new Date(dto.linkExpiresAt) : undefined,
     subscriptionActivatedAt: dto.subscriptionActivatedAt ? new Date(dto.subscriptionActivatedAt) : undefined,
     lastWebhookAt: dto.lastWebhookAt ? new Date(dto.lastWebhookAt) : undefined,
   };

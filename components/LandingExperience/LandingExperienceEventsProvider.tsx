@@ -113,7 +113,6 @@ export function LandingExperienceEventsProvider({
   const [accountLinkStatus, setAccountLinkStatusState] = useState<AccountLinkStatus>(
     () => session?.accountLinkStatus ?? ACCOUNT_LINK_STATUS.Idle,
   );
-  const [linkExpiresAt, setLinkExpiresAtState] = useState<string | undefined>(() => session?.linkExpiresAt);
   const [subscriptionStatus, setSubscriptionStatusState] = useState<SubscriptionStatus>(
     () => session?.subscriptionStatus ?? SUBSCRIPTION_STATUS.Inactive,
   );
@@ -129,10 +128,6 @@ export function LandingExperienceEventsProvider({
 
   const updateAccountLinkStatus = useCallback((status: AccountLinkStatus) => {
     setAccountLinkStatusState(status);
-  }, []);
-
-  const updateLinkExpiresAt = useCallback((expiresAt: string | undefined) => {
-    setLinkExpiresAtState(expiresAt);
   }, []);
 
   const updateSubscriptionStatus = useCallback((status: SubscriptionStatus) => {
@@ -160,9 +155,6 @@ export function LandingExperienceEventsProvider({
       if (prevSession?.subscriptionStatus !== session.subscriptionStatus) {
         setSubscriptionStatusState(session.subscriptionStatus);
       }
-      if (prevSession?.linkExpiresAt !== session.linkExpiresAt) {
-        setLinkExpiresAtState(session.linkExpiresAt);
-      }
       if (prevSession?.subscriptionActivatedAt !== session.subscriptionActivatedAt) {
         setActivatedAtState(session.subscriptionActivatedAt);
       }
@@ -175,7 +167,6 @@ export function LandingExperienceEventsProvider({
     session?.id,
     session?.accountLinkStatus,
     session?.subscriptionStatus,
-    session?.linkExpiresAt,
     session?.subscriptionActivatedAt,
     session?.linkIdempotencyKey,
     session?.linkedUserRef,
@@ -194,7 +185,6 @@ export function LandingExperienceEventsProvider({
           setSession(event.payload, true);
           updateAccountLinkStatus(event.payload.accountLinkStatus);
           updateSubscriptionStatus(event.payload.subscriptionStatus);
-          updateLinkExpiresAt(event.payload.linkExpiresAt);
           updateActivatedAt(event.payload.subscriptionActivatedAt);
         }
         return;
@@ -212,27 +202,15 @@ export function LandingExperienceEventsProvider({
         const userEmail = webhookPayload.data?.userEmail as string | undefined;
 
         const isAccountLinkEvent = webhookPayload.event?.startsWith('User.Account.Link.');
-        const isSubscriptionEvent = webhookPayload.event?.startsWith('Purchases.Subscriptions.') || 
-                                     webhookPayload.event?.startsWith('Subscription.');
-        
-        const sessionKeyMatches = Boolean(sessionKey && currentSession?.linkSessionKey === sessionKey);
         const userRefMatches = Boolean(userRef && currentSession?.linkedUserRef === userRef);
-        const emailMatches = Boolean(
-          userEmail && currentSession?.email?.toLowerCase() === userEmail?.toLowerCase(),
-        );
-        
-        // For subscription events: only fall back to email while we don't have a stored userRef
-        const subscriptionEmailMatch = isSubscriptionEvent && emailMatches && !currentSession?.linkedUserRef;
 
         const idempotencyMatches = Boolean(
           payloadIdempotencyKey && currentSession?.linkIdempotencyKey === payloadIdempotencyKey,
         );
-        
-        const accountLinkMatch = Boolean(isAccountLinkEvent && (idempotencyMatches || userRefMatches));
-        const nonAccountLinkMatch =
-          !isAccountLinkEvent && (sessionKeyMatches || userRefMatches || emailMatches || subscriptionEmailMatch);
 
-        const isRelevantToSession = accountLinkMatch || nonAccountLinkMatch;
+        const isRelevantToSession = isAccountLinkEvent
+          ? Boolean(idempotencyMatches || userRefMatches)
+          : userRefMatches;
 
         console.log('Webhook event received', {
           event: webhookPayload.event,
@@ -243,17 +221,11 @@ export function LandingExperienceEventsProvider({
           currentSessionLinkSessionKey: currentSession?.linkSessionKey,
           currentSessionLinkIdempotencyKey: currentSession?.linkIdempotencyKey,
           currentSessionLinkedUserRef: currentSession?.linkedUserRef,
-          sessionKeyMatches,
           userRefMatches,
-          emailMatches,
-          subscriptionEmailMatch,
           payloadIdempotencyKey,
           idempotencyMatches,
-          accountLinkMatch,
-          nonAccountLinkMatch,
           isRelevantToSession,
           eventKey,
-          alreadyProcessed: isEventProcessed(eventKey),
         });
 
         // Only check if processed AFTER checking relevance
@@ -424,7 +396,7 @@ export function LandingExperienceEventsProvider({
         });
       }
     },
-    [appendEvent, setSession, updateAccountLinkStatus, updateActivatedAt, updateLinkExpiresAt, updateSubscriptionStatus],
+    [appendEvent, setSession, updateAccountLinkStatus, updateActivatedAt, updateSubscriptionStatus],
   );
 
   useEventStream(Boolean(session), handleDemoEvent);
@@ -432,12 +404,10 @@ export function LandingExperienceEventsProvider({
   const value = useMemo<LandingExperienceEventsContextValue>(
     () => ({
       accountLinkStatus,
-      linkExpiresAt,
       subscriptionStatus,
       activatedAt,
       eventLog,
       setAccountLinkStatus: updateAccountLinkStatus,
-      setLinkExpiresAt: updateLinkExpiresAt,
       setSubscriptionStatus: updateSubscriptionStatus,
       setActivatedAt: updateActivatedAt,
     }),
@@ -445,11 +415,9 @@ export function LandingExperienceEventsProvider({
       accountLinkStatus,
       activatedAt,
       eventLog,
-      linkExpiresAt,
       subscriptionStatus,
       updateAccountLinkStatus,
       updateActivatedAt,
-      updateLinkExpiresAt,
       updateSubscriptionStatus,
     ],
   );

@@ -69,12 +69,10 @@ function LandingExperienceInner({
   const sessionId = session?.id ?? null;
   const {
     accountLinkStatus,
-    linkExpiresAt,
     subscriptionStatus,
     activatedAt,
     eventLog,
     setAccountLinkStatus,
-    setLinkExpiresAt,
     setSubscriptionStatus,
     setActivatedAt,
   } = useLandingExperienceEvents();
@@ -94,7 +92,6 @@ function LandingExperienceInner({
       api.get<{
         accountLinkStatus: AccountLinkStatus;
         linkSessionKey?: string;
-        linkExpiresAt?: string;
         linkedUserRef?: string;
       }>(
         '/api/account/link/status',
@@ -104,7 +101,6 @@ function LandingExperienceInner({
 
     if (linkResponse.success && linkResponse.data) {
       setAccountLinkStatus(linkResponse.data.accountLinkStatus);
-      setLinkExpiresAt(linkResponse.data.linkExpiresAt);
     }
 
     if (subscriptionResponse.success && subscriptionResponse.data) {
@@ -112,7 +108,7 @@ function LandingExperienceInner({
       setActivatedAt(subscriptionResponse.data.activatedAt);
     }
 
-  }, [api, sessionId, setAccountLinkStatus, setActivatedAt, setLinkExpiresAt, setSubscriptionStatus]);
+  }, [api, sessionId, setAccountLinkStatus, setActivatedAt, setSubscriptionStatus]);
 
   useEffect(() => {
     if (!sessionId) {
@@ -151,10 +147,9 @@ function LandingExperienceInner({
         return;
       }
 
-      const { status, expiresAt, redirectUrl } = response.data;
+      const { status, redirectUrl } = response.data;
 
       setAccountLinkStatus(status);
-      setLinkExpiresAt(expiresAt);
 
       if (status !== ACCOUNT_LINK_STATUS.Linked) {
         const { blocked } = openPopup({ url: redirectUrl, target: MOCK_ACCOUNT_LINK_WINDOW_NAME });
@@ -167,7 +162,7 @@ function LandingExperienceInner({
     } finally {
       setBusy(false);
     }
-  }, [api, openPopup, session, setAccountLinkStatus, setLinkExpiresAt, setSession]);
+  }, [api, openPopup, session, setAccountLinkStatus, setSession]);
 
   const handleSubscribe = useCallback(async () => {
     if (!plan) {
@@ -258,12 +253,11 @@ function LandingExperienceInner({
 
           {!session && <HowTheDemoWorksCard />}
 
-          <LinkAccountCard
-            visible={Boolean(showLinkCard)}
-            busy={busy}
-            linkExpiresAt={linkExpiresAt}
-            onLinkAccount={handleLinkAccount}
-          />
+        <LinkAccountCard
+          visible={Boolean(showLinkCard)}
+          busy={busy}
+          onLinkAccount={handleLinkAccount}
+        />
 
           <SubscriptionActionCard
             visible={Boolean(showSubscriptionCard)}

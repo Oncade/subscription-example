@@ -39,12 +39,10 @@ export interface LandingExperienceEventsProviderProps {
 
 export interface LandingExperienceEventsContextValue {
   readonly accountLinkStatus: AccountLinkStatus;
-  readonly linkExpiresAt?: string;
   readonly subscriptionStatus: SubscriptionStatus;
   readonly activatedAt?: string;
   readonly eventLog: EventLogEntry[];
   setAccountLinkStatus: (status: AccountLinkStatus) => void;
-  setLinkExpiresAt: (expiresAt: string | undefined) => void;
   setSubscriptionStatus: (status: SubscriptionStatus) => void;
   setActivatedAt: (activatedAt: string | undefined) => void;
 }
@@ -63,7 +61,6 @@ export interface PlanPreviewCardProps {
 export interface LinkAccountCardProps {
   readonly visible: boolean;
   readonly busy: boolean;
-  readonly linkExpiresAt?: string;
   readonly onLinkAccount: () => Promise<void> | void;
 }
 

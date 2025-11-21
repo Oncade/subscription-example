@@ -51,7 +51,6 @@ export async function handleAccountLinkStatusGet(request: NextRequest): Promise<
       data: {
         accountLinkStatus,
         linkSessionKey: dto.linkSessionKey,
-        linkExpiresAt: dto.linkExpiresAt,
         linkedUserRef,
       },
     });

@@ -10,7 +10,6 @@ export const PLAN_PREVIEW_TITLE = 'Plan preview';
 export const LINK_ACCOUNT_TITLE = 'Link your game account';
 export const LINK_ACCOUNT_DESCRIPTION =
   'We\'ll open the linking dialog in a new window. Approve the connection and the webhook will push an update back here.';
-export const LINK_ACCOUNT_EXPIRATION_PREFIX = 'Session expires';
 export const LINK_ACCOUNT_BUTTON_READY = 'Open linking dialog';
 export const LINK_ACCOUNT_BUTTON_BUSY = 'Preparing...';
 
