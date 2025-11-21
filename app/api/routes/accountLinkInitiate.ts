@@ -22,7 +22,7 @@ export async function handleAccountLinkInitiatePost(request: NextRequest): Promi
       // Request body is optional
     }
 
-    const linkSession = await initiateAccountLinkSession(record.id, record.email, request.nextUrl.origin, {
+    const linkSession = await initiateAccountLinkSession(record.email, request.nextUrl.origin, {
       idempotencyKey: clientIdempotencyKey,
     });
     const status = linkSession.status === ACCOUNT_LINK_STATUS.Linked ? 200 : 201;

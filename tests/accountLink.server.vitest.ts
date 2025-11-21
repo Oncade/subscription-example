@@ -20,7 +20,7 @@ describe('accountLink.server', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const session = createDemoSession('pilot@example.com');
-    const linkSession = await initiateAccountLinkSession(session.id, session.email, DEMO_APP_ORIGIN);
+    const linkSession = await initiateAccountLinkSession(session.email, DEMO_APP_ORIGIN);
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const call = fetchMock.mock.calls[0];
@@ -51,7 +51,7 @@ describe('accountLink.server', () => {
 
     const session = createDemoSession('pilot@example.com');
     const clientKey = 'demo-client-idempotency';
-    await initiateAccountLinkSession(session.id, session.email, DEMO_APP_ORIGIN, {
+    await initiateAccountLinkSession(session.email, DEMO_APP_ORIGIN, {
       idempotencyKey: clientKey,
     });
 
@@ -74,7 +74,7 @@ describe('accountLink.server', () => {
     );
 
     const session = createDemoSession('pilot@example.com');
-    const linkSession = await initiateAccountLinkSession(session.id, session.email, DEMO_APP_ORIGIN);
+    const linkSession = await initiateAccountLinkSession(session.email, DEMO_APP_ORIGIN);
 
     expect(linkSession.status).toBe(ACCOUNT_LINK_STATUS.Linked);
     const expectedBase = (process.env.DEMO_API_BASE_URL ?? 'https://oncade.gg').replace(/\/$/, '');
@@ -92,7 +92,7 @@ describe('accountLink.server', () => {
     }));
 
     const session = createDemoSession('pilot@example.com');
-    const linkSession = await initiateAccountLinkSession(session.id, session.email, DEMO_APP_ORIGIN);
+    const linkSession = await initiateAccountLinkSession(session.email, DEMO_APP_ORIGIN);
 
     expect(linkSession.sessionKey).toBe('session_remote');
     expect(linkSession.status).toBe(ACCOUNT_LINK_STATUS.Started);
@@ -109,7 +109,7 @@ describe('accountLink.server', () => {
     }));
 
     const session = createDemoSession('pilot@example.com');
-    const linkSession = await initiateAccountLinkSession(session.id, session.email, DEMO_APP_ORIGIN);
+    const linkSession = await initiateAccountLinkSession(session.email, DEMO_APP_ORIGIN);
 
     expect(linkSession.sessionKey).toBe('session_remote');
     expect(linkSession.status).toBe(ACCOUNT_LINK_STATUS.Started);

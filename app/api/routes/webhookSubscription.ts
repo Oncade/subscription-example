@@ -3,7 +3,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { WEBHOOK_SIGNATURE_HEADER } from '@/lib/constants';
-import { activateSubscription, cancelSubscription } from '@/lib/subscription/subscription.server';
+import { DEMO_EVENT_TYPE } from '@/lib/events/eventBus.constants';
+import { pushEventToClients } from '@/lib/events/eventStream.server';
+import { resolveDemoPlanConfig } from '@/lib/env/planConfig.server';
 import { SUBSCRIPTION_STATUS } from '@/lib/subscription/subscription.types';
 import type { SubscriptionWebhookBody } from '@/lib/subscription/subscriptionWebhook.types';
 import {
@@ -28,18 +30,35 @@ export async function handleWebhookSubscriptionPost(request: NextRequest): Promi
     return NextResponse.json({ success: false, error: 'Invalid webhook signature.' }, { status: 401 });
   }
 
-  const payload = JSON.parse(rawBody) as SubscriptionWebhookBody;
-  if (!payload.sessionId) {
+  let payload: SubscriptionWebhookBody;
+  try {
+    payload = JSON.parse(rawBody) as SubscriptionWebhookBody;
+  } catch {
+    return NextResponse.json({ success: false, error: 'Invalid JSON payload.' }, { status: 400 });
+  }
+
+  if (!payload.sessionId || typeof payload.sessionId !== 'string') {
     return NextResponse.json({ success: false, error: 'Session identifier missing.' }, { status: 400 });
   }
 
-  if (payload.status === SUBSCRIPTION_STATUS.Active) {
-    await activateSubscription(payload.sessionId, 'coinflow', `coinflow.subscription.${payload.status}`);
-  } else if (payload.status === SUBSCRIPTION_STATUS.Canceled) {
-    await cancelSubscription(payload.sessionId, 'coinflow', `coinflow.subscription.${payload.status}`);
-  } else {
+  if (payload.status !== SUBSCRIPTION_STATUS.Active && payload.status !== SUBSCRIPTION_STATUS.Canceled) {
     return NextResponse.json({ success: false, error: 'Unsupported subscription status.' }, { status: 400 });
   }
+
+  const plan = await resolveDemoPlanConfig().catch(() => undefined);
+  const planCode = plan?.code || plan?.itemId || 'demo-plan';
+
+  pushEventToClients({
+    type: DEMO_EVENT_TYPE.SubscriptionEvent,
+    payload: {
+      sessionId: payload.sessionId,
+      status: payload.status,
+      occurredAt: new Date().toISOString(),
+      provider: 'coinflow',
+      planCode,
+      topic: `coinflow.subscription.${payload.status}`,
+    },
+  });
 
   return NextResponse.json({ success: true });
 }

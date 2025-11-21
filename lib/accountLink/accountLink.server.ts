@@ -6,7 +6,6 @@ import { DEMO_LINK_TIMEOUT_MS, ONCADE_API_VERSION_HEADER_VALUE } from '@/lib/con
 import type { AccountLinkSessionDto } from '@/lib/accountLink/accountLink.types';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
 import { getOncadeIntegrationConfig } from '@/lib/env/config.server';
-import type { DemoSessionId } from '@/lib/session/session.types';
 
 interface RemoteInitiateResponse {
   readonly url: string;
@@ -18,13 +17,10 @@ interface InitiateAccountLinkOptions {
 }
 
 export async function initiateAccountLinkSession(
-  sessionId: DemoSessionId,
   email: string,
   origin: string,
   options?: InitiateAccountLinkOptions,
 ): Promise<AccountLinkSessionDto> {
-  // Session state is managed client-side, we just need the sessionId and email to initiate the link
-
   const { apiBaseUrl, serverApiKey, gameId } = getOncadeIntegrationConfig();
   const trimmedBaseUrl = apiBaseUrl.replace(/\/$/, '');
   const resolvedIdempotencyKey =
@@ -56,9 +52,6 @@ export async function initiateAccountLinkSession(
   const status = response.status === 200 ? ACCOUNT_LINK_STATUS.Linked : ACCOUNT_LINK_STATUS.Started;
   const expiresAt = status === ACCOUNT_LINK_STATUS.Started ? new Date(Date.now() + DEMO_LINK_TIMEOUT_MS) : undefined;
   const redirectUrl = resolveLinkUrl(payload.url, apiBaseUrl, payload.sessionKey, origin);
-  
-  // Session state is managed client-side, no need to store on server
-  // Events are sent directly to clients via webhook handlers
 
   return {
     sessionKey: payload.sessionKey,
