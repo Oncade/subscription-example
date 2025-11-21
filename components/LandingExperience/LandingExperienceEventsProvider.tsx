@@ -10,6 +10,8 @@ import { SUBSCRIPTION_STATUS, type SubscriptionStatus } from '@/lib/subscription
 import { useEventStream } from '@/hooks/useEventStream';
 import type { OncadeWebhookEnvelope } from '@/lib/webhooks/oncadeWebhook.types';
 
+import { PROCESSED_WEBHOOK_EVENTS_STORAGE_KEY } from '@/lib/constants';
+
 import { MAX_EVENT_LOG_ENTRIES } from './landingExperience.constants';
 import type {
   EventLogEntry,
@@ -24,7 +26,6 @@ import {
   makeEventId,
 } from './landingExperience.utils';
 
-const PROCESSED_EVENTS_STORAGE_KEY = 'demo.processedWebhookEvents';
 const MAX_STORED_EVENTS = 1000;
 
 function getPayloadIdempotencyKey(payload: OncadeWebhookEnvelope): string | null {
@@ -68,7 +69,7 @@ function isEventProcessed(eventKey: string): boolean {
   }
   
   try {
-    const stored = localStorage.getItem(PROCESSED_EVENTS_STORAGE_KEY);
+    const stored = localStorage.getItem(PROCESSED_WEBHOOK_EVENTS_STORAGE_KEY);
     if (!stored) {
       return false;
     }
@@ -85,7 +86,7 @@ function markEventAsProcessed(eventKey: string): void {
   }
   
   try {
-    const stored = localStorage.getItem(PROCESSED_EVENTS_STORAGE_KEY);
+    const stored = localStorage.getItem(PROCESSED_WEBHOOK_EVENTS_STORAGE_KEY);
     const processedEvents: string[] = stored ? JSON.parse(stored) : [];
     
     if (!processedEvents.includes(eventKey)) {
@@ -94,7 +95,7 @@ function markEventAsProcessed(eventKey: string): void {
       if (processedEvents.length > MAX_STORED_EVENTS) {
         processedEvents.shift();
       }
-      localStorage.setItem(PROCESSED_EVENTS_STORAGE_KEY, JSON.stringify(processedEvents));
+      localStorage.setItem(PROCESSED_WEBHOOK_EVENTS_STORAGE_KEY, JSON.stringify(processedEvents));
     }
   } catch {
     // Ignore localStorage errors

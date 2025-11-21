@@ -4,6 +4,7 @@ export const LINK_SESSION_QUERY_KEY = 'sessionKey' as const;
 export const MOCK_ACCOUNT_LINK_WINDOW_NAME = 'subscription-demo-account-link' as const;
 export const DEMO_EVENT_STREAM_URL = '/api/events/stream' as const;
 export const SESSION_STORAGE_KEY = 'subscription-demo-session-id' as const;
+export const PROCESSED_WEBHOOK_EVENTS_STORAGE_KEY = 'demo.processedWebhookEvents' as const;
 
 export const WEBHOOK_SIGNATURE_HEADER = 'x-demo-signature' as const;
 export const ONCADE_WEBHOOK_SIGNATURE_HEADER = 'x-oncade-signature' as const;

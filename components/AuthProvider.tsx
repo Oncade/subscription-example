@@ -2,7 +2,12 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import { SESSION_HEADER, SESSION_STATE_HEADER, SESSION_STORAGE_KEY } from '@/lib/constants';
+import {
+  PROCESSED_WEBHOOK_EVENTS_STORAGE_KEY,
+  SESSION_HEADER,
+  SESSION_STATE_HEADER,
+  SESSION_STORAGE_KEY,
+} from '@/lib/constants';
 import type { DemoSessionDto } from '@/lib/session/session.types';
 
 interface AuthContextValue {
@@ -94,14 +99,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return;
     }
 
-    // Use localStorage as source of truth - only use server to create new sessions
-    // Don't fetch from server as it has in-memory state we don't want
     if (stored.dto) {
       setSessionState(stored.dto);
       return;
     }
 
-    // If we only have an ID but no DTO, try to fetch (for backwards compatibility)
     const next = await fetchSession(stored.id, stored.dto);
     setSessionState(next);
     if (next) {
@@ -111,10 +113,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [persistSessionValue, readPersistedSession]);
 
+  const clearProcessedEvents = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      window.localStorage.removeItem(PROCESSED_WEBHOOK_EVENTS_STORAGE_KEY);
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
+
   const signOut = useCallback(() => {
     setSessionState(null);
     persistSessionValue(null);
-  }, [persistSessionValue]);
+    clearProcessedEvents();
+  }, [clearProcessedEvents, persistSessionValue]);
 
   const openLoginModal = useCallback(() => setLoginModalOpen(true), []);
   const closeLoginModal = useCallback(() => setLoginModalOpen(false), []);
