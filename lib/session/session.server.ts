@@ -249,29 +249,3 @@ export function resolveSessionIdByEmail(email: string): DemoSessionId | undefine
   }
   return deriveSessionId(normalized);
 }
-
-// Alias for backwards compatibility - these functions are no longer used but kept for compatibility
-export async function resolveSessionIdFromLinkWithLookup(sessionKey: string): Promise<DemoSessionId | undefined> {
-  return resolveSessionIdFromLink(sessionKey);
-}
-
-export async function resolveSessionIdByUserRefWithLookup(userRef: string): Promise<DemoSessionId | undefined> {
-  return resolveSessionIdByUserRef(userRef);
-}
-
-// Legacy functions kept for compatibility but they don't use memory
-// These are deprecated and should be removed once all code is updated
-
-/** @deprecated Use getSessionDtoFromRequest instead - sessions are now client-side only */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function getSessionDto(_id: DemoSessionId): DemoSessionDto | undefined {
-  // Always return undefined - sessions are client-side only
-  return undefined;
-}
-
-/** @deprecated Use requireSessionFromRequest instead - sessions are now client-side only */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function getSessionRecord(_id: DemoSessionId): DemoSessionRecord | undefined {
-  // Always return undefined - sessions are now client-side only
-  return undefined;
-}
