@@ -2,10 +2,8 @@ import 'server-only';
 
 import { randomUUID } from 'crypto';
 
-import { MOCK_ACCOUNT_LINK_WINDOW_NAME, DEMO_LINK_TIMEOUT_MS, ONCADE_API_VERSION_HEADER_VALUE } from '@/lib/constants';
-import { emitDemoEvent } from '@/lib/events/eventBus.server';
-import { DEMO_EVENT_TYPE } from '@/lib/events/eventBus.constants';
-import type { AccountLinkEventPayload, AccountLinkSessionDto, AccountLinkStatus } from '@/lib/accountLink/accountLink.types';
+import { DEMO_LINK_TIMEOUT_MS, ONCADE_API_VERSION_HEADER_VALUE } from '@/lib/constants';
+import type { AccountLinkSessionDto } from '@/lib/accountLink/accountLink.types';
 import { ACCOUNT_LINK_STATUS } from '@/lib/accountLink/accountLink.types';
 import { getOncadeIntegrationConfig } from '@/lib/env/config.server';
 import type { DemoSessionId } from '@/lib/session/session.types';
@@ -17,34 +15,6 @@ interface RemoteInitiateResponse {
 
 interface InitiateAccountLinkOptions {
   readonly idempotencyKey?: string;
-}
-
-interface AccountLinkEventOptions {
-  readonly sessionId: DemoSessionId;
-  readonly sessionKey: string;
-  readonly status: AccountLinkStatus;
-  readonly provider: 'demo' | 'oncade';
-  readonly triggeredAt?: string;
-  readonly topic?: string;
-  readonly userRef?: string;
-}
-
-export function emitAccountLinkEvent(options: AccountLinkEventOptions): void {
-  const occurredAt = options.triggeredAt && options.triggeredAt.trim().length > 0 ? options.triggeredAt : new Date().toISOString();
-  const topic =
-    options.topic && options.topic.trim().length > 0
-      ? options.topic
-      : `${options.provider}.account-link.${options.status}`;
-  const eventPayload: AccountLinkEventPayload = {
-    sessionId: options.sessionId,
-    sessionKey: options.sessionKey,
-    status: options.status,
-    triggeredAt: occurredAt,
-    provider: options.provider,
-    topic,
-    userRef: options.userRef,
-  };
-  emitDemoEvent({ type: DEMO_EVENT_TYPE.AccountLinkEvent, payload: eventPayload });
 }
 
 export async function initiateAccountLinkSession(
@@ -125,37 +95,3 @@ function resolveLinkUrl(urlFromApi: string | undefined, apiBaseUrl: string, sess
 
   return fallback;
 }
-
-// These functions are no longer needed - webhooks are handled client-side
-// Keeping for backwards compatibility but they're no-ops
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function completeAccountLink(
-  _sessionId: DemoSessionId,
-  _sessionKey: string,
-  _provider: 'demo' | 'oncade',
-  _userRef?: string,
-  _triggeredAt?: string,
-  _topic?: string,
-): void {
-  // No-op - webhooks are handled client-side
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function cancelAccountLink(
-  _sessionId: DemoSessionId,
-  _sessionKey: string,
-  _provider: 'demo' | 'oncade',
-  _userRef?: string,
-  _triggeredAt?: string,
-  _topic?: string,
-): void {
-  // No-op - webhooks are handled client-side
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function resolveSessionIdFromLink(_sessionKey: string): DemoSessionId | undefined {
-  // No-op - sessions are client-side only
-  return undefined;
-}
-
-export const ACCOUNT_LINK_WINDOW_NAME = MOCK_ACCOUNT_LINK_WINDOW_NAME;

@@ -36,8 +36,6 @@ describe('accountLink.server', () => {
       expect(linkSession.status).toBe(ACCOUNT_LINK_STATUS.Started);
       const expectedBase = (process.env.DEMO_API_BASE_URL ?? 'https://oncade.gg').replace(/\/$/, '');
       expect(linkSession.redirectUrl).toBe(`${expectedBase}/link?session=session_remote`);
-      // resolveSessionIdFromLink is now a no-op since we removed server-side mapping
-      // Session mapping is handled client-side via webhook events
   });
 
   it('uses the provided idempotency key when supplied', async () => {
@@ -96,8 +94,6 @@ describe('accountLink.server', () => {
     const session = createDemoSession('pilot@example.com');
     const linkSession = await initiateAccountLinkSession(session.id, session.email, DEMO_APP_ORIGIN);
 
-    // completeAccountLink is now a no-op (state managed client-side)
-    // Just verify the link session was created correctly
     expect(linkSession.sessionKey).toBe('session_remote');
     expect(linkSession.status).toBe(ACCOUNT_LINK_STATUS.Started);
   });
@@ -115,8 +111,6 @@ describe('accountLink.server', () => {
     const session = createDemoSession('pilot@example.com');
     const linkSession = await initiateAccountLinkSession(session.id, session.email, DEMO_APP_ORIGIN);
 
-    // cancelAccountLink is now a no-op (state managed client-side)
-    // Just verify the link session was created correctly
     expect(linkSession.sessionKey).toBe('session_remote');
     expect(linkSession.status).toBe(ACCOUNT_LINK_STATUS.Started);
   });
