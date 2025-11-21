@@ -9,7 +9,22 @@ import { requireSessionFromRequest, resolveSessionErrorStatus } from '@/lib/sess
 export async function handleAccountLinkInitiatePost(request: NextRequest): Promise<NextResponse> {
   try {
     const record = requireSessionFromRequest(request);
-    const linkSession = await initiateAccountLinkSession(record.id, record.email, request.nextUrl.origin);
+    let clientIdempotencyKey: string | undefined;
+    try {
+      const payload = (await request.json()) as { idempotencyKey?: unknown };
+      if (payload && typeof payload.idempotencyKey === 'string') {
+        const trimmed = payload.idempotencyKey.trim();
+        if (trimmed.length > 0) {
+          clientIdempotencyKey = trimmed;
+        }
+      }
+    } catch {
+      // Request body is optional
+    }
+
+    const linkSession = await initiateAccountLinkSession(record.id, record.email, request.nextUrl.origin, {
+      idempotencyKey: clientIdempotencyKey,
+    });
     const status = linkSession.status === ACCOUNT_LINK_STATUS.Linked ? 200 : 201;
 
     const response = NextResponse.json({ success: true, data: linkSession }, { status });

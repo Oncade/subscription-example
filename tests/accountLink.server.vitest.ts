@@ -31,12 +31,35 @@ describe('accountLink.server', () => {
       Authorization: `Bearer ${process.env.DEMO_SERVER_API_KEY}`,
       'X-Oncade-API-Version': 'v1',
       'X-Game-Id': process.env.DEMO_GAME_ID,
+      'Idempotency-Key': expect.any(String),
     });
       expect(linkSession.status).toBe(ACCOUNT_LINK_STATUS.Started);
       const expectedBase = (process.env.DEMO_API_BASE_URL ?? 'https://oncade.gg').replace(/\/$/, '');
       expect(linkSession.redirectUrl).toBe(`${expectedBase}/link?session=session_remote`);
       // resolveSessionIdFromLink is now a no-op since we removed server-side mapping
       // Session mapping is handled client-side via webhook events
+  });
+
+  it('uses the provided idempotency key when supplied', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        url: 'https://oncade.gg/link?session=session_remote',
+        sessionKey: 'session_remote',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const session = createDemoSession('pilot@example.com');
+    const clientKey = 'demo-client-idempotency';
+    await initiateAccountLinkSession(session.id, session.email, DEMO_APP_ORIGIN, {
+      idempotencyKey: clientKey,
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(init?.headers).toMatchObject({ 'Idempotency-Key': clientKey });
   });
 
   it('treats existing approved sessions as linked', async () => {

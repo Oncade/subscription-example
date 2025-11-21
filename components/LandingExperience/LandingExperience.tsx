@@ -31,6 +31,13 @@ import {
   useLandingExperienceEvents,
 } from './LandingExperienceEventsProvider';
 
+function createClientIdempotencyKey(): string {
+  if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function LandingExperience({ environment }: LandingExperienceProps) {
   const auth = useAuth();
   const sessionKey = auth.session?.id ?? 'anonymous-session';
@@ -40,6 +47,7 @@ export function LandingExperience({ environment }: LandingExperienceProps) {
       <LandingExperienceInner
         environment={environment}
         session={auth.session}
+        setSession={auth.setSession}
         openLoginModal={auth.openLoginModal}
         loading={auth.loading}
         signOut={auth.signOut}
@@ -51,6 +59,7 @@ export function LandingExperience({ environment }: LandingExperienceProps) {
 function LandingExperienceInner({
   environment,
   session,
+  setSession,
   openLoginModal,
   loading,
   signOut,
@@ -118,15 +127,24 @@ function LandingExperienceInner({
   }, [sessionId, refreshStatuses]);
 
   const handleLinkAccount = useCallback(async () => {
+    if (!session) {
+      setErrorMessage('Create a demo session before starting account linking.');
+      return;
+    }
+
     setBusy(true);
     setErrorMessage(undefined);
+
+    const idempotencyKey = createClientIdempotencyKey();
+    setSession({ ...session, linkIdempotencyKey: idempotencyKey }, true);
+
     try {
       const response = await api.post<{
         sessionKey: string;
         redirectUrl: string;
         status: AccountLinkStatus;
         expiresAt?: string;
-      }>('/api/account/link/initiate');
+      }>('/api/account/link/initiate', { idempotencyKey });
 
       if (!response.success || !response.data) {
         setErrorMessage(response.error || 'Failed to start account linking.');
@@ -149,7 +167,7 @@ function LandingExperienceInner({
     } finally {
       setBusy(false);
     }
-  }, [api, openPopup, setAccountLinkStatus, setLinkExpiresAt]);
+  }, [api, openPopup, session, setAccountLinkStatus, setLinkExpiresAt, setSession]);
 
   const handleSubscribe = useCallback(async () => {
     if (!plan) {

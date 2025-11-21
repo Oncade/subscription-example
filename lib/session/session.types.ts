@@ -11,6 +11,7 @@ export interface DemoSessionRecord {
   subscriptionStatus: SubscriptionStatus;
   linkedUserRef?: string;
   linkSessionKey?: string;
+  linkIdempotencyKey?: string;
   linkExpiresAt?: Date;
   subscriptionActivatedAt?: Date;
   lastWebhookAt?: Date;
@@ -24,6 +25,7 @@ export interface DemoSessionDto {
   readonly subscriptionStatus: SubscriptionStatus;
   readonly linkedUserRef?: string;
   readonly linkSessionKey?: string;
+  readonly linkIdempotencyKey?: string;
   readonly linkExpiresAt?: string;
   readonly subscriptionActivatedAt?: string;
   readonly lastWebhookAt?: string;

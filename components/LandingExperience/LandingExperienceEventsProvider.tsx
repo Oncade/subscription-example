@@ -27,15 +27,38 @@ import {
 const PROCESSED_EVENTS_STORAGE_KEY = 'demo.processedWebhookEvents';
 const MAX_STORED_EVENTS = 1000;
 
+function getPayloadIdempotencyKey(payload: OncadeWebhookEnvelope): string | null {
+  if (!payload?.data || typeof payload.data !== 'object') {
+    return null;
+  }
+
+  const payloadData = payload.data as Record<string, unknown>;
+  const metadata = 'metadata' in payloadData ? (payloadData.metadata as unknown) : undefined;
+  if (!metadata || typeof metadata !== 'object') {
+    return null;
+  }
+
+  const metadataRecord = metadata as Record<string, unknown>;
+  const primary = metadataRecord.idempotencyKey;
+  if (primary != null) {
+    return String(primary);
+  }
+
+  const alternate = metadataRecord['Idempotency-Key'];
+  if (alternate != null) {
+    return String(alternate);
+  }
+
+  return null;
+}
+
 function getEventKey(payload: OncadeWebhookEnvelope): string {
-  const idempotencyKey = payload.data?.metadata && typeof payload.data.metadata === 'object' && 'idempotencyKey' in payload.data.metadata
-    ? String(payload.data.metadata.idempotencyKey)
-    : null;
-  
+  const idempotencyKey = getPayloadIdempotencyKey(payload);
+
   if (idempotencyKey) {
     return `${payload.event}:${idempotencyKey}`;
   }
-  
+
   return `${payload.event}:${payload.timestamp || Date.now()}`;
 }
 
@@ -147,8 +170,16 @@ export function LandingExperienceEventsProvider({
     } else if (!session && prevSession) {
       prevSessionRef.current = null;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
-  }, [session?.id, session?.accountLinkStatus, session?.subscriptionStatus, session?.linkExpiresAt, session?.subscriptionActivatedAt]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    session?.id,
+    session?.accountLinkStatus,
+    session?.subscriptionStatus,
+    session?.linkExpiresAt,
+    session?.subscriptionActivatedAt,
+    session?.linkIdempotencyKey,
+    session?.linkedUserRef,
+  ]);
 
   const handleDemoEvent = useCallback(
     (event: DemoEvent) => {
@@ -172,6 +203,7 @@ export function LandingExperienceEventsProvider({
       if (event.type === DEMO_EVENT_TYPE.RawWebhookEvent) {
         const webhookPayload = event.payload;
         const eventKey = getEventKey(webhookPayload);
+        const payloadIdempotencyKey = getPayloadIdempotencyKey(webhookPayload) ?? undefined;
         
         const sessionKey = webhookPayload.data?.sessionKey as string | undefined;
         const rawUserRef = (webhookPayload.data?.user_ref || webhookPayload.data?.userRef);
@@ -179,38 +211,28 @@ export function LandingExperienceEventsProvider({
         const userRef = rawUserRef && rawUserRef !== 'null' ? String(rawUserRef) : undefined;
         const userEmail = webhookPayload.data?.userEmail as string | undefined;
 
-        // Check if this event is relevant to the current session FIRST
-        // Match by: sessionKey (exact match), userRef, or email
-        // For account link events, we also accept if session doesn't have linkSessionKey yet AND email matches
         const isAccountLinkEvent = webhookPayload.event?.startsWith('User.Account.Link.');
         const isSubscriptionEvent = webhookPayload.event?.startsWith('Purchases.Subscriptions.') || 
                                      webhookPayload.event?.startsWith('Subscription.');
         
-        const sessionKeyMatches = sessionKey && currentSession?.linkSessionKey === sessionKey;
-        const userRefMatches = userRef && currentSession?.linkedUserRef === userRef;
-        const emailMatches = userEmail && currentSession?.email?.toLowerCase() === userEmail?.toLowerCase();
+        const sessionKeyMatches = Boolean(sessionKey && currentSession?.linkSessionKey === sessionKey);
+        const userRefMatches = Boolean(userRef && currentSession?.linkedUserRef === userRef);
+        const emailMatches = Boolean(
+          userEmail && currentSession?.email?.toLowerCase() === userEmail?.toLowerCase(),
+        );
         
-        // For first-time account link events: if session doesn't have linkSessionKey yet, accept if email matches OR if we have a sessionKey
-        const firstTimeAccountLinkMatch = isAccountLinkEvent && 
-          sessionKey && 
-          !currentSession?.linkSessionKey && 
-          (emailMatches || !userEmail); // Accept if email matches OR if no email in webhook (we'll match by sessionKey)
+        // For subscription events: only fall back to email while we don't have a stored userRef
+        const subscriptionEmailMatch = isSubscriptionEvent && emailMatches && !currentSession?.linkedUserRef;
+
+        const idempotencyMatches = Boolean(
+          payloadIdempotencyKey && currentSession?.linkIdempotencyKey === payloadIdempotencyKey,
+        );
         
-        // For subscription events: always match by email if provided, even if userRef doesn't match yet
-        const subscriptionEmailMatch = isSubscriptionEvent && emailMatches;
-        
-        // For account link events without email, try to match by sessionKey if session doesn't have linkSessionKey yet
-        const accountLinkSessionKeyMatch = isAccountLinkEvent && 
-          sessionKey && 
-          !currentSession?.linkSessionKey;
-        
-        // For account link events: if status is Canceled or Idle, accept new sessionKey (allows retry after cancel)
-        const canAcceptNewAccountLink = isAccountLinkEvent && 
-          sessionKey && 
-          (currentSession?.accountLinkStatus === ACCOUNT_LINK_STATUS.Canceled || 
-           currentSession?.accountLinkStatus === ACCOUNT_LINK_STATUS.Idle);
-        
-        const isRelevantToSession = sessionKeyMatches || userRefMatches || emailMatches || firstTimeAccountLinkMatch || subscriptionEmailMatch || accountLinkSessionKeyMatch || canAcceptNewAccountLink;
+        const accountLinkMatch = Boolean(isAccountLinkEvent && (idempotencyMatches || userRefMatches));
+        const nonAccountLinkMatch =
+          !isAccountLinkEvent && (sessionKeyMatches || userRefMatches || emailMatches || subscriptionEmailMatch);
+
+        const isRelevantToSession = accountLinkMatch || nonAccountLinkMatch;
 
         console.log('Webhook event received', {
           event: webhookPayload.event,
@@ -219,14 +241,16 @@ export function LandingExperienceEventsProvider({
           userEmail,
           currentSessionEmail: currentSession?.email,
           currentSessionLinkSessionKey: currentSession?.linkSessionKey,
+          currentSessionLinkIdempotencyKey: currentSession?.linkIdempotencyKey,
           currentSessionLinkedUserRef: currentSession?.linkedUserRef,
           sessionKeyMatches,
           userRefMatches,
           emailMatches,
-          firstTimeAccountLinkMatch,
           subscriptionEmailMatch,
-          accountLinkSessionKeyMatch,
-          canAcceptNewAccountLink,
+          payloadIdempotencyKey,
+          idempotencyMatches,
+          accountLinkMatch,
+          nonAccountLinkMatch,
           isRelevantToSession,
           eventKey,
           alreadyProcessed: isEventProcessed(eventKey),
@@ -290,6 +314,10 @@ export function LandingExperienceEventsProvider({
               linkSessionKey: status === ACCOUNT_LINK_STATUS.Canceled 
                 ? undefined 
                 : (sessionKey || currentSession.linkSessionKey),
+              // Persist idempotency key so we can match future webhooks even before user_ref exists
+              linkIdempotencyKey: status === ACCOUNT_LINK_STATUS.Canceled && !payloadIdempotencyKey
+                ? undefined
+                : (payloadIdempotencyKey ?? currentSession.linkIdempotencyKey),
               // Update linkedUserRef if we received one, or clear it on cancel
               linkedUserRef: status === ACCOUNT_LINK_STATUS.Canceled
                 ? undefined

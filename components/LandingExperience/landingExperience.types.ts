@@ -25,6 +25,7 @@ export interface LandingExperienceProps {
 export interface LandingExperienceInnerProps {
   readonly environment: DemoEnvironmentSummaryDto;
   readonly session: DemoSessionDto | null;
+  readonly setSession: (session: DemoSessionDto | null, persist?: boolean) => void;
   readonly openLoginModal: () => void;
   readonly loading: boolean;
   readonly signOut: () => void;

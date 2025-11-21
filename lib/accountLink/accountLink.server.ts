@@ -15,6 +15,10 @@ interface RemoteInitiateResponse {
   readonly sessionKey: string;
 }
 
+interface InitiateAccountLinkOptions {
+  readonly idempotencyKey?: string;
+}
+
 interface AccountLinkEventOptions {
   readonly sessionId: DemoSessionId;
   readonly sessionKey: string;
@@ -43,11 +47,20 @@ export function emitAccountLinkEvent(options: AccountLinkEventOptions): void {
   emitDemoEvent({ type: DEMO_EVENT_TYPE.AccountLinkEvent, payload: eventPayload });
 }
 
-export async function initiateAccountLinkSession(sessionId: DemoSessionId, email: string, origin: string): Promise<AccountLinkSessionDto> {
+export async function initiateAccountLinkSession(
+  sessionId: DemoSessionId,
+  email: string,
+  origin: string,
+  options?: InitiateAccountLinkOptions,
+): Promise<AccountLinkSessionDto> {
   // Session state is managed client-side, we just need the sessionId and email to initiate the link
 
   const { apiBaseUrl, serverApiKey, gameId } = getOncadeIntegrationConfig();
   const trimmedBaseUrl = apiBaseUrl.replace(/\/$/, '');
+  const resolvedIdempotencyKey =
+    options?.idempotencyKey && options.idempotencyKey.trim().length > 0
+      ? options.idempotencyKey.trim()
+      : randomUUID();
 
   const requestBody = {
     email: email.trim().toLowerCase(),
@@ -59,7 +72,7 @@ export async function initiateAccountLinkSession(sessionId: DemoSessionId, email
       Authorization: `Bearer ${serverApiKey}`,
       'X-Oncade-API-Version': ONCADE_API_VERSION_HEADER_VALUE,
       'X-Game-Id': gameId,
-      'Idempotency-Key': randomUUID(),
+      'Idempotency-Key': resolvedIdempotencyKey,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(requestBody),
